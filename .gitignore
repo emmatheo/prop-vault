@@ -1,0 +1,7 @@
+node_modules/
+backend/keypair.json
+backend/.env
+backend/data/txline-credentials.json
+target/
+dist/
+.anchor/

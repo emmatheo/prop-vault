@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prop Vault — settle at the whistle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B0B14; --panel:#151527; --panel-2:#1B1C31; --line:#26273F;
+  --violet:#7C5CFF; --live:#34E27A; --lose:#FF5470; --gold:#F5C453;
+  --text:#F2F2F8; --muted:#8B8CA3;
+  --disp:"Chakra Petch",sans-serif; --body:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",monospace;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none}
+a{color:var(--violet)}
+.wrap{max-width:560px;margin:0 auto;padding:0 14px 90px}
+
+/* top bar */
+header{position:sticky;top:0;z-index:20;background:rgba(11,11,20,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px}
+.logo{font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:.5px}
+.logo b{color:var(--violet)}
+.pill{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.pill.replay{color:var(--gold);border-color:var(--gold)}
+.spacer{flex:1}
+.btn{border-radius:10px;padding:9px 14px;font-weight:600;font-size:13px}
+.btn-violet{background:var(--violet);color:#fff}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* tabs */
+.tabs{display:flex;gap:8px;padding:14px 0 6px;overflow-x:auto}
+.tab{background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:7px 16px;font-weight:600;font-size:13px;white-space:nowrap}
+.tab.on{background:var(--violet);color:#fff;border-color:var(--violet)}
+
+/* recent settlements ticker */
+.ticker{display:flex;gap:8px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+.ticker::-webkit-scrollbar{display:none}
+.tick{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:var(--gold);border:1px dashed rgba(245,196,83,.4);border-radius:8px;padding:5px 9px;background:rgba(245,196,83,.06)}
+
+/* market card */
+.card{background:linear-gradient(160deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0}
+.card .q{font-family:var(--disp);font-weight:600;font-size:16px;line-height:1.3}
+.meta{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 7px;border-radius:6px}
+.badge.live{color:#04160b;background:var(--live);animation:pulse 1.6s infinite}
+.badge.open{color:var(--violet);border:1px solid var(--violet)}
+.badge.settled{color:var(--gold);border:1px solid var(--gold)}
+.badge.voided{color:var(--muted);border:1px solid var(--line)}
+@keyframes pulse{50%{opacity:.65}}
+@media (prefers-reduced-motion: reduce){.badge.live{animation:none}}
+.sides{display:flex;gap:10px;margin-top:14px}
+.side{flex:1;border-radius:12px;padding:12px;text-align:center;border:1px solid var(--line);background:rgba(255,255,255,.02)}
+.side:not([disabled]):hover{border-color:var(--violet)}
+.side .lbl{font-size:11px;letter-spacing:1.2px;color:var(--muted)}
+.side .odds{font-family:var(--disp);font-weight:700;font-size:22px;margin-top:2px}
+.side.yes .odds{color:var(--live)} .side.no .odds{color:var(--lose)}
+.pot{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:10px;text-align:center}
+.outcome-strip{margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.won{font-family:var(--disp);font-weight:700}
+.won.yes{color:var(--live)} .won.no{color:var(--lose)}
+
+/* live scoreboard */
+.scorebox{background:linear-gradient(160deg,#191A2C,#12122A);border:1px solid var(--line);border-radius:16px;padding:18px;margin:12px 0;text-align:center}
+.scoreline{font-family:var(--disp);font-weight:700;font-size:40px;letter-spacing:2px}
+.score-teams{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:4px}
+.raw{font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all;margin-top:8px;text-align:left;max-height:120px;overflow:auto}
+
+/* sheet */
+.sheet-back{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;display:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--panel-2);border-radius:20px 20px 0 0;border-top:1px solid var(--line);padding:20px 18px 26px;max-width:560px;margin:0 auto;display:none}
+.sheet.open,.sheet-back.open{display:block}
+.sheet h3{font-family:var(--disp);font-size:17px}
+.amt{width:100%;margin-top:14px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-family:var(--disp);font-size:24px;text-align:center}
+.amt:focus{outline:2px solid var(--violet)}
+.preview{margin-top:12px;font-size:13px;color:var(--muted);line-height:1.6}
+.preview b{color:var(--text)}
+.note{font-size:11px;color:var(--muted);margin-top:10px}
+
+/* receipt ticket — the signature element */
+.ticket{position:relative;background:#171226;border:1px solid rgba(245,196,83,.55);border-radius:14px;padding:18px;margin-top:14px;
+  background-image:radial-gradient(circle at 0 50%, var(--bg) 9px, transparent 10px),radial-gradient(circle at 100% 50%, var(--bg) 9px, transparent 10px)}
+.ticket:before{content:"";position:absolute;left:14px;right:14px;top:52px;border-top:1px dashed rgba(245,196,83,.35)}
+.ticket .head{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px}
+.ticket .head .t{font-family:var(--disp);font-weight:700;color:var(--gold);letter-spacing:1px;font-size:13px}
+.krow{display:flex;justify-content:space-between;gap:10px;margin-top:10px;font-size:12px}
+.krow .k{color:var(--muted)}
+.krow .v{font-family:var(--mono);text-align:right;word-break:break-all}
+.copy{background:none;color:var(--gold);font-family:var(--mono);font-size:11px;border:1px solid rgba(245,196,83,.4);border-radius:6px;padding:2px 6px;margin-left:6px}
+
+/* toasts, states */
+.toasts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,480px)}
+.toast{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px}
+.toast.err{border-left-color:var(--lose)} .toast.ok{border-left-color:var(--live)}
+.empty{color:var(--muted);text-align:center;padding:44px 20px;line-height:1.6}
+.skel{height:118px;border-radius:16px;margin:12px 0;background:linear-gradient(90deg,var(--panel) 25%,var(--panel-2) 50%,var(--panel) 75%);background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.hint{background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.35);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--muted);margin:12px 0}
+.hint b{color:var(--text)}
+:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <span class="logo">PROP<b>VAULT</b></span>
+  <span class="pill" id="netPill">…</span>
+  <span class="pill replay" id="replayPill" hidden>DEMO REPLAY</span>
+  <span class="spacer"></span>
+  <button class="btn btn-ghost" id="faucetBtn" hidden>Get test USDC</button>
+  <button class="btn btn-violet" id="walletBtn">Connect wallet</button>
+</div></header>
+
+<div class="wrap">
+  <div id="phantomHint" class="hint" hidden>
+    <b>No wallet detected.</b> You can browse everything; to stake, install
+    <a href="https://phantom.app" target="_blank" rel="noopener">Phantom</a>.
+    Testing on devnet? In Phantom: Settings → Developer settings → enable Testnet mode.
+  </div>
+
+  <div class="ticker" id="ticker" hidden></div>
+
+  <div class="tabs">
+    <button class="tab on" data-tab="open">Open</button>
+    <button class="tab" data-tab="live">Live</button>
+    <button class="tab" data-tab="settled">Settled</button>
+    <button class="tab" data-tab="mine">My stakes</button>
+  </div>
+
+  <div id="view"></div>
+</div>
+
+<div class="sheet-back" id="sheetBack"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="toasts" id="toasts"></div>
+
+<script type="module">
+const $=s=>document.querySelector(s);
+const API="";
+const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
+const FEE=0.01;
+
+// ---------- state ----------
+let markets=[], health=null, tab="open", wallet=null, positions=[], live={}; // live[fixtureId]={home,away,phase,raw}
+let web3=null;
+
+// ---------- boot ----------
+init();
+async function init(){
+  render(skeletons());
+  try{ health=await getJ("/health");
+    $("#netPill").textContent=health.network.toUpperCase();
+    $("#replayPill").hidden = health.mode!=="replay";
+  }catch{ $("#netPill").textContent="OFFLINE"; toast("Backend unreachable. Start it, then refresh.","err"); }
+  if(!window?.phantom?.solana) $("#phantomHint").hidden=false;
+  await refresh(); startSSE();
+  setInterval(refresh,15000);
+}
+
+async function refresh(){
+  try{ markets=await getJ("/markets"); }catch(e){ /* keep last good */ }
+  if(wallet){ try{ positions=await getJ("/positions/"+wallet); }catch{} }
+  paintTicker(); render();
+}
+
+// ---------- wallet ----------
+$("#walletBtn").onclick=async()=>{
+  const ph=window?.phantom?.solana;
+  if(!ph){ window.open("https://phantom.app","_blank"); return; }
+  if(wallet){ await ph.disconnect().catch(()=>{}); wallet=null; positions=[];
+    $("#walletBtn").textContent="Connect wallet"; $("#faucetBtn").hidden=true; render(); return; }
+  try{
+    const r=await ph.connect();
+    wallet=r.publicKey.toString();
+    $("#walletBtn").textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
+    $("#faucetBtn").hidden = health?.network!=="devnet";
+    toast("Wallet connected.","ok"); refresh();
+  }catch{ toast("Connection cancelled.","err"); }
+};
+
+$("#faucetBtn").onclick=async()=>{
+  if(!wallet) return;
+  $("#faucetBtn").disabled=true; $("#faucetBtn").textContent="Minting…";
+  try{
+    const r=await postJ("/faucet",{address:wallet});
+    toast(`100 test USDC sent. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${r.tx}?cluster=devnet">View transaction</a>`,"ok");
+  }catch(e){ toast("Faucet failed: "+e.message,"err"); }
+  $("#faucetBtn").disabled=false; $("#faucetBtn").textContent="Get test USDC";
+};
+
+async function signAndSend(b64){
+  if(!web3) web3=await import("https://esm.sh/@solana/web3.js@1.95.3");
+  const tx=web3.Transaction.from(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));
+  const {signature}=await window.phantom.solana.signAndSendTransaction(tx);
+  return signature;
+}
+
+// ---------- tabs & render ----------
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+  tab=b.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));
+  render();
+});
+
+function render(html){
+  const v=$("#view");
+  if(html!==undefined){ v.innerHTML=html; return; }
+  const now=Date.now()/1000;
+  if(tab==="mine"){ v.innerHTML=renderMine(); return; }
+  let list=markets;
+  if(tab==="open") list=markets.filter(m=>m.status==="open"&&now<m.lockTs);
+  if(tab==="live") list=markets.filter(m=>m.status==="open"&&now>=m.lockTs);
+  if(tab==="settled") list=markets.filter(m=>m.status==="settled"||m.status==="voided");
+  if(!markets.length) { v.innerHTML=empty("No markets yet. They appear here as matches are listed — check back before the next kickoff."); return; }
+  if(!list.length){ v.innerHTML=empty({open:"No open markets right now. New props open before each kickoff.",
+    live:"No matches underway. Locked markets appear here during play, then settle at full time.",
+    settled:"Nothing settled yet. The first receipt lands seconds after the first final whistle."}[tab]); return; }
+  v.innerHTML=(tab==="live"?renderScoreboards(list):"")+list.map(card).join("");
+  bindCards();
+}
+
+function card(m){
+  const now=Date.now()/1000, p=m.pools||{yesPool:0,noPool:0};
+  const tot=p.yesPool+p.noPool;
+  const yesPct=tot>0?Math.round(100*p.yesPool/tot):null;
+  const yesOdds=yesPct===null?"—":yesPct+"%", noOdds=yesPct===null?"—":(100-yesPct)+"%";
+  const status = m.status!=="open" ? m.status : (now>=m.lockTs?"live":"open");
+  const badge={open:'<span class="badge open">OPEN</span>',
+    live:'<span class="badge live">● LIVE — settles at full time</span>',
+    settled:'<span class="badge settled">SETTLED</span>',
+    voided:'<span class="badge voided">VOIDED — stakes refundable</span>',
+    "void-pending":'<span class="badge voided">MATCH OFF — refunds pending</span>'}[status]||"";
+  let body="";
+  if(status==="open"){
+    body=`<div class="sides">
+      <button class="side yes" data-stake="${m.marketId}|1"><div class="lbl">YES</div><div class="odds">${yesOdds}</div></button>
+      <button class="side no"  data-stake="${m.marketId}|0"><div class="lbl">NO</div><div class="odds">${noOdds}</div></button>
+    </div>
+    <div class="pot">${tot>0?`Pot ${fmt(tot)} USDC · YES ${fmt(p.yesPool)} / NO ${fmt(p.noPool)}`:"No stakes yet — be first in the pot"}</div>`;
+  } else if(status==="live"){
+    body=`<div class="pot">Pot ${fmt(tot)} USDC locked · YES ${yesOdds} / NO ${noOdds}</div>`;
+  } else if(status==="settled"){
+    const secs = m.settledTs && m.settleAfterTs ? Math.max(0,m.settledTs-m.settleAfterTs) : null;
+    body=`<div class="outcome-strip">
+      <span class="won ${m.outcome==="YES"?"yes":"no"}">${m.outcome} won${secs!==null?` · proof-settled`:``}</span>
+      <button class="btn btn-ghost" data-receipt="${m.marketId}">View receipt</button>
+    </div>`;
+  } else {
+    body=`<div class="pot">This match didn’t finish. Every stake is refundable from My stakes.</div>`;
+  }
+  const t=new Date(m.lockTs*1000);
+  return `<div class="card"><div class="q">${esc(m.question)}</div>
+    <div class="meta">${badge}<span>${status==="open"?"Locks "+t.toLocaleString():"Kickoff was "+t.toLocaleString()}</span></div>
+    ${body}</div>`;
+}
+
+function renderScoreboards(list){
+  const fixtures=[...new Set(list.map(m=>m.fixtureId))];
+  return fixtures.map(f=>{
+    const s=live[f];
+    if(!s) return `<div class="scorebox"><div class="scoreline">— : —</div>
+      <div class="score-teams"><span>Fixture ${f}</span><span>waiting for feed…</span></div></div>`;
+    return `<div class="scorebox"><div class="scoreline">${s.home??"—"} : ${s.away??"—"}</div>
+      <div class="score-teams"><span>Fixture ${f}</span><span>${s.phase!=null?"phase "+s.phase:""} · live from TxLINE</span></div>
+      ${s.home==null?`<div class="raw">${esc(JSON.stringify(s.raw)).slice(0,400)}</div>`:""}</div>`;
+  }).join("");
+}
+
+function renderMine(){
+  if(!wallet) return empty(`Connect your wallet to see your stakes, claim wins, and collect refunds.`);
+  if(!positions.length) return empty("No stakes yet. Pick a market in Open and back your call.");
+  return positions.map(r=>{
+    const p=r.pools||{yesPool:0,noPool:0,state:0};
+    let line="", act="";
+    if(r.status==="open"||r.status==="void-pending"){
+      line=`Staked — YES ${fmt(r.yes)} / NO ${fmt(r.no)} USDC`;
+    } else if(r.status==="voided"){
+      line=`Refund available: ${fmt(r.yes+r.no)} USDC`;
+      act=r.claimed?`<span class="pill">Refunded</span>`:`<button class="btn btn-violet" data-claim="${r.marketId}">Collect refund</button>`;
+    } else if(r.status==="settled"){
+      const won = r.outcome==="YES" ? r.yes : r.no;
+      if(won>0){
+        const winPool=r.outcome==="YES"?p.yesPool:p.noPool, losePool=r.outcome==="YES"?p.noPool:p.yesPool;
+        const winnings=winPool>0?won*losePool/winPool:0;
+        const payout=won+winnings-winnings*FEE;
+        line=`${r.outcome} won — payout ${fmt(payout)} USDC`;
+        act=r.claimed?`<span class="pill">Claimed</span>`:`<button class="btn btn-violet" data-claim="${r.marketId}">Claim payout</button>`;
+      } else line=`${r.outcome} won — this one didn’t land. Staked ${fmt(r.yes+r.no)} USDC.`;
+    }
+    return `<div class="card"><div class="q">${esc(r.question)}</div>
+      <div class="meta"><span>${line}</span></div>
+      <div class="outcome-strip"><span></span>${act}</div></div>`;
+  }).join("");
+}
+
+function bindCards(){
+  document.querySelectorAll("[data-stake]").forEach(b=>b.onclick=()=>{
+    const [id,yes]=b.dataset.stake.split("|"); openSheet(Number(id),yes==="1");
+  });
+  document.querySelectorAll("[data-receipt]").forEach(b=>b.onclick=()=>openReceipt(Number(b.dataset.receipt)));
+  document.querySelectorAll("[data-claim]").forEach(b=>b.onclick=()=>claim(Number(b.dataset.claim),b));
+}
+const bindMine=bindCards;
+
+// ---------- stake sheet ----------
+function openSheet(marketId,sideYes){
+  const m=markets.find(x=>x.marketId===marketId); if(!m) return;
+  if(!wallet){ toast("Connect your wallet first — top right.","err"); return; }
+  const p=m.pools||{yesPool:0,noPool:0};
+  $("#sheet").innerHTML=`
+    <h3>Stake ${sideYes?"YES":"NO"} — ${esc(m.question)}</h3>
+    <input class="amt" id="amt" type="number" min="0.1" step="0.1" placeholder="USDC amount" inputmode="decimal">
+    <div class="preview" id="prev">Enter an amount to preview your payout.</div>
+    <div class="note">Pools shift until kickoff, so the payout is an estimate. A 1% fee applies to winnings only. Settlement is proof-verified on Solana at full time.</div>
+    <div class="sides" style="margin-top:14px">
+      <button class="btn btn-ghost side" id="cancelBtn">Cancel</button>
+      <button class="btn btn-violet side" id="confirmBtn">Stake ${sideYes?"YES":"NO"}</button>
+    </div>`;
+  $("#sheet").classList.add("open"); $("#sheetBack").classList.add("open");
+  $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  const amt=$("#amt"); amt.focus();
+  amt.oninput=()=>{
+    const a=Number(amt.value);
+    if(!(a>0)){ $("#prev").textContent="Enter an amount to preview your payout."; return; }
+    const myPool=(sideYes?p.yesPool:p.noPool)+a, other=sideYes?p.noPool:p.yesPool;
+    const winnings=other*a/myPool, payout=a+winnings-winnings*FEE;
+    $("#prev").innerHTML=`If ${sideYes?"YES":"NO"} wins at current pools: <b>${fmt(payout)} USDC</b> back on ${fmt(a)} staked${other===0?" (no opposing stakes yet — you’d get a full refund of your stake)":""}.`;
+  };
+  $("#confirmBtn").onclick=async()=>{
+    const a=Number(amt.value);
+    if(!(a>0)){ toast("Enter a stake amount above zero.","err"); return; }
+    $("#confirmBtn").disabled=true; $("#confirmBtn").textContent="Waiting for wallet…";
+    try{
+      const {tx}=await postJ("/tx/stake",{address:wallet,marketId,sideYes,amount:a});
+      const sig=await signAndSend(tx);
+      toast(`Stake placed. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View transaction</a>`,"ok");
+      closeSheet(); setTimeout(refresh,2500);
+    }catch(e){ toast("Stake failed: "+(e.message||"wallet rejected"),"err");
+      $("#confirmBtn").disabled=false; $("#confirmBtn").textContent=`Stake ${sideYes?"YES":"NO"}`; }
+  };
+}
+function closeSheet(){ $("#sheet").classList.remove("open"); $("#sheetBack").classList.remove("open"); }
+
+async function claim(marketId,btn){
+  btn.disabled=true; btn.textContent="Waiting for wallet…";
+  try{
+    const {tx}=await postJ("/tx/claim",{address:wallet,marketId});
+    const sig=await signAndSend(tx);
+    toast(`Paid out. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View transaction</a>`,"ok");
+    setTimeout(refresh,2500);
+  }catch(e){ toast("Claim failed: "+(e.message||"wallet rejected"),"err"); btn.disabled=false; btn.textContent="Claim payout"; }
+}
+
+// ---------- receipt ticket ----------
+async function openReceipt(marketId){
+  let r; try{ r=await getJ(`/markets/${marketId}/receipt`); }
+  catch(e){ toast("Receipt not ready: "+e.message,"err"); return; }
+  const m=markets.find(x=>x.marketId===marketId);
+  const secs = r.settledTs && m?.settleAfterTs ? r.settledTs - m.settleAfterTs : null;
+  $("#sheet").innerHTML=`
+    <h3>${esc(r.question)}</h3>
+    <div class="ticket">
+      <div class="head"><span class="t">SETTLEMENT RECEIPT</span>
+        <span class="won ${r.outcome==="YES"?"yes":"no"}">${r.outcome} WON</span></div>
+      ${secs!==null && secs>=0?`<div class="krow"><span class="k">Settled after eligibility window</span><span class="v">${secs}s</span></div>`:""}
+      <div class="krow"><span class="k">Settlement transaction</span>
+        <span class="v"><a target="_blank" rel="noopener" href="${r.explorer}">${r.settlementTx.slice(0,8)}…${r.settlementTx.slice(-8)}</a></span></div>
+      <div class="krow"><span class="k">TxLINE sequence</span><span class="v">#${r.txlineSeq}</span></div>
+      <div class="krow"><span class="k">Merkle root</span>
+        <span class="v">${esc(String(r.merkleEventStatRoot)).slice(0,18)}…<button class="copy" data-copy="${esc(String(r.merkleEventStatRoot))}">copy</button></span></div>
+      <div class="krow"><span class="k">Proof window ends</span><span class="v">${new Date(r.proofWindowEndsMs).toLocaleString()}</span></div>
+      <div class="note" style="margin-top:14px">${esc(r.note)}</div>
+    </div>
+    <div class="sides" style="margin-top:14px">
+      <button class="btn btn-ghost side" id="cancelBtn">Close</button>
+      <a class="btn btn-violet side" style="text-align:center;text-decoration:none;line-height:1.6" target="_blank" rel="noopener" href="${r.explorer}">Verify it yourself</a>
+    </div>`;
+  $("#sheet").classList.add("open"); $("#sheetBack").classList.add("open");
+  $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(b.dataset.copy);b.textContent="copied";});
+}
+
+// ---------- live feed ----------
+function startSSE(){
+  const es=new EventSource(API+"/live");
+  es.addEventListener("score",ev=>{
+    let e; try{ e=JSON.parse(ev.data); }catch{ return; }
+    const d=e.data??{};
+    const f=d.fixtureId??d.fixture_id??d.fixture?.id; if(!f) return;
+    const s=live[f]??(live[f]={raw:null});
+    s.raw=d;
+    const home=d.homeScore??d.home_score??d.score?.home??(Array.isArray(d.score)?d.score[0]:undefined);
+    const away=d.awayScore??d.away_score??d.score?.away??(Array.isArray(d.score)?d.score[1]:undefined);
+    if(home!=null)s.home=home; if(away!=null)s.away=away;
+    const ph=d.phase??d.gamePhase??d.phaseId; if(ph!=null)s.phase=ph;
+    if(tab==="live") render();
+  });
+  es.onerror=()=>{/* EventSource auto-reconnects */};
+}
+
+function paintTicker(){
+  const done=markets.filter(m=>m.status==="settled").slice(-8).reverse();
+  const t=$("#ticker");
+  if(!done.length){ t.hidden=true; return; }
+  t.hidden=false;
+  t.innerHTML=done.map(m=>`<span class="tick">✓ ${esc(m.question).slice(0,34)} → ${m.outcome}</span>`).join("");
+}
+
+// ---------- utils ----------
+async function getJ(u){ const r=await fetch(API+u); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||r.status); return j; }
+async function postJ(u,b){ const r=await fetch(API+u,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(b)}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||r.status); return j; }
+function toast(msg,kind){ const d=document.createElement("div"); d.className="toast "+(kind||""); d.innerHTML=msg; $("#toasts").appendChild(d); setTimeout(()=>d.remove(),7000); }
+function empty(t){ return `<div class="empty">${t}</div>`; }
+function skeletons(){ return `<div class="skel"></div><div class="skel"></div><div class="skel"></div>`; }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+</script>
+</body>
+</html>
