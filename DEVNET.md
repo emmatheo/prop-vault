@@ -2,10 +2,10 @@
 
 | What | Value |
 |---|---|
-| Program ID | `94R7Nzf8EGk2KBr5jD9tBPxLTyuHxVBhMhe8kPnJ7Ein` |
+| Program ID | `AUu6yj6QPNPYqG1NxhtmBnsLTCHSQKGPoibSsFokESs8` |
 | Deploy wallet (= backend wallet + USDC mint authority) | `FDuYyyncAGpvrkTdNaVr1Sb8qtdy43NQWw99BSZBshcM` |
-| Test USDC mint (set as USDC_MINT in backend/.env) | `BP6tpnKL2hobkd2N4dgpGa4wKbVoDy49QKVxEi6qbjV3` |
-| Explorer | https://explorer.solana.com/address/94R7Nzf8EGk2KBr5jD9tBPxLTyuHxVBhMhe8kPnJ7Ein?cluster=devnet |
+| Test USDC mint (set as USDC_MINT in backend/.env) | `4Kjxhh1DmzSqWmUHgybuSJzN2dzUz2ocGUaQridWG3xg` |
+| Explorer | https://explorer.solana.com/address/AUu6yj6QPNPYqG1NxhtmBnsLTCHSQKGPoibSsFokESs8?cluster=devnet |
 
 The wallet + program keypairs are in this workflow run's
 'devnet-keys' artifact (Actions tab, 5-day retention).

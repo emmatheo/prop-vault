@@ -67,6 +67,17 @@ export class TxlineClient {
     return r.data as StatValidation;
   }
 
+  /** Raw authenticated GET against any TxLINE /api path (admin passthrough). */
+  async rawGet(apiPath: string, params?: Record<string, string>): Promise<{ status: number; data: unknown }> {
+    try {
+      const r = await this.http.get(apiPath, { params });
+      return { status: r.status, data: r.data };
+    } catch (e: any) {
+      if (e?.response) return { status: e.response.status, data: e.response.data };
+      throw e;
+    }
+  }
+
   headers() { return authHeaders(this.creds); }
 
   /** 401 => re-onboard once (JWT expiry); 5xx/network => 3 retries with backoff. */
