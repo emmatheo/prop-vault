@@ -54,22 +54,28 @@ jobs:
           echo "== Deploy wallet address =="
           solana address
 
-      - name: Airdrop devnet SOL (needs ~3 SOL)
+      - name: Fund wallet (airdrop, then wait for manual faucet if rate-limited)
         run: |
-          for i in $(seq 1 10); do
+          ADDR=$(solana address)
+          has_funds() {
             BAL=$(solana balance | awk '{print $1}')
-            echo "balance: $BAL SOL (attempt $i)"
-            OK=$(awk -v b="$BAL" 'BEGIN{print (b>=3)?1:0}')
-            [ "$OK" = "1" ] && exit 0
+            echo "balance: $BAL SOL"
+            [ "$(awk -v b="$BAL" 'BEGIN{print (b>=3)?1:0}')" = "1" ]
+          }
+          for i in $(seq 1 5); do
+            has_funds && exit 0
             solana airdrop 2 || true
             sleep 8
           done
-          BAL=$(solana balance | awk '{print $1}')
-          OK=$(awk -v b="$BAL" 'BEGIN{print (b>=3)?1:0}')
-          if [ "$OK" != "1" ]; then
-            echo "::error::Airdrop rate-limited. Send >=3 devnet SOL to $(solana address) via https://faucet.solana.com then re-run this workflow."
-            exit 1
-          fi
+          echo "::warning::Automatic airdrop is rate-limited from CI."
+          echo "::warning::Send >=3 devnet SOL to $ADDR via https://faucet.solana.com (network: DEVNET)."
+          echo "Waiting up to 30 minutes for the wallet to be funded..."
+          for i in $(seq 1 90); do
+            has_funds && exit 0
+            sleep 20
+          done
+          echo "::error::Wallet $ADDR was not funded within 30 minutes. Fund it and re-run."
+          exit 1
 
       - name: Build (anchor 0.30.1)
         run: |
