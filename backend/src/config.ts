@@ -2,6 +2,8 @@
 
 import "dotenv/config";
 import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 
 const network = (process.env.NETWORK ?? "devnet") as "devnet" | "mainnet";
 
@@ -20,12 +22,30 @@ const TXLINE = {
   },
 }[network];
 
+const dataDir = process.env.DATA_DIR ?? path.resolve("data");
+
+// ADMIN_KEY is optional: without it, generate one on first boot and persist
+// it to data/admin-key.txt so the server works with zero .env configuration.
+function loadOrCreateAdminKey(): string {
+  if (process.env.ADMIN_KEY) return process.env.ADMIN_KEY;
+  const file = path.join(dataDir, "admin-key.txt");
+  try {
+    const existing = fs.readFileSync(file, "utf8").trim();
+    if (existing) return existing;
+  } catch {}
+  const key = crypto.randomBytes(12).toString("base64url");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(file, key + "\n");
+  console.log(`ADMIN KEY (also saved to ${file}): ${key}`);
+  return key;
+}
+
 export const CFG = {
   network,
   port: Number(process.env.PORT ?? 8787),
-  dataDir: process.env.DATA_DIR ?? path.resolve("data"),
+  dataDir,
   keypairPath: process.env.KEYPAIR_PATH ?? path.resolve("keypair.json"),
-  adminKey: process.env.ADMIN_KEY ?? "change-me",
+  adminKey: loadOrCreateAdminKey(),
   replayFile: process.env.REPLAY_FILE || null,
   replaySpeed: Number(process.env.REPLAY_SPEED ?? 1),
   txline: {
@@ -36,10 +56,12 @@ export const CFG = {
   },
   solana: {
     rpcUrl: process.env.RPC_URL ?? TXLINE.rpcUrl,
-    // Devnet: create your own test USDC mint (spl-token create-token) or use a faucet mint.
-    usdcMint: process.env.USDC_MINT ?? "",
+    // Default: the devnet test-USDC mint created by the CI deploy (DEVNET.md).
+    usdcMint: process.env.USDC_MINT ??
+      (network === "devnet" ? "FWJiwiotctjZcgqe37sfRRfZh2hqEKZ31syc3GFS4PbU" : ""),
   },
   vault: {
-    idlPath: process.env.VAULT_IDL ?? path.resolve("../target/idl/prop_vault.json"),
+    // Default: the committed IDL copy generated at the deployed program id.
+    idlPath: process.env.VAULT_IDL ?? path.resolve("target-idl/prop_vault.json"),
   },
 };
