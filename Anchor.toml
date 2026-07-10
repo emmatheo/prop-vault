@@ -1,11 +1,18 @@
 [toolchain]
 anchor_version = "0.30.1"
 
+[features]
+resolution = true
+skip-lint = false
+
 [programs.devnet]
-prop_vault = "PropVau1t1111111111111111111111111111111111"  # replace after `anchor keys sync`
+prop_vault = "AudqCpevyJj4FFXnJQsdkFaj1FMFqMhYNZ9SEN37Cc9q"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "backend/keypair.json"
 
 [scripts]
