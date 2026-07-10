@@ -5,7 +5,9 @@
 // docs example), and attaches a 1.4M CU budget because validate_stat is heavy.
 
 import * as anchor from "@coral-xyz/anchor";
-import { BN } from "@coral-xyz/anchor";
+// Node ESM cannot named-import BN from anchor's CJS bundle; take it off the
+// namespace object instead.
+const { BN } = anchor;
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import fs from "fs";

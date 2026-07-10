@@ -38,10 +38,14 @@ jobs:
       - name: Encrypt wallet with export public key
         run: |
           mkdir -p .github/wallet-export
-          for f in deploy-wallet.json prop_vault-keypair.json; do
-            openssl pkeyutl -encrypt -pubin -inkey .github/wallet-export-pub.pem \
-              -pkeyopt rsa_padding_mode:oaep \
-              -in "/root/devnet-keys/$f" -out ".github/wallet-export/$f.enc"
+          for f in deploy-wallet.json prop_vault-keypair.json usdc-mint.txt; do
+            if [ -f "/root/devnet-keys/$f" ]; then
+              openssl pkeyutl -encrypt -pubin -inkey .github/wallet-export-pub.pem \
+                -pkeyopt rsa_padding_mode:oaep \
+                -in "/root/devnet-keys/$f" -out ".github/wallet-export/$f.enc"
+            else
+              echo "skip $f (not in cache)"
+            fi
           done
           ls -la .github/wallet-export/
 
