@@ -168,6 +168,35 @@ async function main() {
     }
   });
 
+  // List fixtureIds TxLINE is currently reporting: scans the last N 5-minute
+  // update buckets (default 24 = two hours). A fixture only appears here once
+  // its match is being played, so use it at/after kickoff to grab the id.
+  app.get("/admin/live-fixtures", async (req, res) => {
+    try {
+      if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
+      const buckets = Math.min(Number(req.query.buckets ?? 24), 100);
+      const seen = new Map<number, { updates: number; lastSeen: number }>();
+      for (let i = 0; i < buckets; i++) {
+        const when = new Date(Date.now() - i * 5 * 60_000);
+        try {
+          const data: any = await txline.scoresUpdatesAt(when);
+          const list: any[] = Array.isArray(data) ? data : data?.fixtures ?? data?.summaries ?? [];
+          for (const f of list) {
+            const id = Number(f.fixtureId ?? f.fixture_id ?? f.id);
+            if (!id) continue;
+            const cur = seen.get(id) ?? { updates: 0, lastSeen: 0 };
+            cur.updates += Number(f.updateStats?.updateCount ?? f.update_stats?.update_count ?? 1);
+            cur.lastSeen = Math.max(cur.lastSeen, when.getTime());
+            seen.set(id, cur);
+          }
+        } catch {} // empty bucket -> skip
+      }
+      res.json([...seen.entries()].map(([fixtureId, v]) => ({ fixtureId, ...v })));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/admin/markets", async (req, res) => {
     try {
       if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
