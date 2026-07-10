@@ -256,8 +256,6 @@
     }
   ],
   "constants": [
-    { "name": "TXLINE_MINT", "type": "pubkey", "value": "4Zao8ocPhmMgq7PdsYWyxvqySMGx7xb9cMftPMkEokRG" },
-    { "name": "USDT_MINT", "type": "pubkey", "value": "ELWTKspHKCnCfCiCiqYw1EDH77k8VCP74dK9qytG2Ujh" },
     { "name": "TOKEN_DECIMALS", "type": "u32", "value": "6" }
   ]
 }
