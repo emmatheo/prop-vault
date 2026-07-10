@@ -197,6 +197,22 @@ async function main() {
     }
   });
 
+  // Authenticated passthrough to any TxLINE GET endpoint, for exploring the
+  // API (e.g. the fixtures endpoints) without writing code. GET-only and
+  // admin-key gated; path must stay under /api/.
+  app.get("/admin/txline", async (req, res) => {
+    try {
+      if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
+      const apiPath = String(req.query.path ?? "");
+      if (!apiPath.startsWith("/api/")) return res.status(400).json({ error: "path must start with /api/" });
+      const { path: _p, ...params } = req.query as Record<string, string>;
+      const out = await txline.rawGet(apiPath, params);
+      res.status(out.status).json(out.data ?? null);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/admin/markets", async (req, res) => {
     try {
       if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
