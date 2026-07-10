@@ -20,7 +20,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-declare_id!("94R7Nzf8EGk2KBr5jD9tBPxLTyuHxVBhMhe8kPnJ7Ein"); // replace after `anchor keys sync`
+declare_id!("AUu6yj6QPNPYqG1NxhtmBnsLTCHSQKGPoibSsFokESs8"); // replace after `anchor keys sync`
 
 // TxLINE devnet program (from docs: programs/addresses)
 pub const TXORACLE_DEVNET: &str = "6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J";
