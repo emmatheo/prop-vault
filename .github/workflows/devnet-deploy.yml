@@ -1,0 +1,163 @@
+name: Deploy to Solana devnet
+
+on:
+  push:
+    branches: [claude/anchor-solana-setup-6qlvlk]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: devnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Official Anchor 0.30.1 build image: solana 1.18.17, anchor-cli 0.30.1,
+    # platform-tools v1.41 and the 2024-06 nightly rustc the IDL step needs.
+    container:
+      image: backpackapp/build:v0.30.1
+      options: --user root
+    env:
+      HOME: /root
+      # The IDL-generation step of anchor 0.30.1 only compiles on a mid-2024
+      # nightly host toolchain (see BUILD-NOTES.md).
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PATH and git
+        run: |
+          echo "/root/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          echo "/root/.cargo/bin" >> "$GITHUB_PATH"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Persist the deploy wallet, program keypair and USDC mint across runs
+      # so a failed run can be re-run (or manually funded) without minting a
+      # new identity every time. Save happens IMMEDIATELY after creation (not
+      # in a post step) so the wallet survives even if this run fails later.
+      - name: Restore devnet keys cache
+        id: keys-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /root/devnet-keys
+          key: devnet-keys-v1
+
+      - name: Wallet
+        run: |
+          mkdir -p /root/devnet-keys
+          if [ ! -f /root/devnet-keys/deploy-wallet.json ]; then
+            solana-keygen new --no-bip39-passphrase -s -o /root/devnet-keys/deploy-wallet.json
+          fi
+          solana config set --url devnet --keypair /root/devnet-keys/deploy-wallet.json
+          echo "== Deploy wallet address =="
+          solana address
+
+      - name: Save devnet keys cache (immediately, survives run failure)
+        if: steps.keys-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /root/devnet-keys
+          key: devnet-keys-v1
+
+      - name: Publish wallet address to repo (public key only)
+        run: |
+          ADDR=$(solana address)
+          if [ ! -f DEPLOY-WALLET.txt ] || [ "$(cat DEPLOY-WALLET.txt)" != "$ADDR" ]; then
+            echo "$ADDR" > DEPLOY-WALLET.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add DEPLOY-WALLET.txt
+            git commit -m "Record deploy wallet address: $ADDR [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
+      - name: Fund wallet (airdrop, then wait for manual faucet if rate-limited)
+        run: |
+          ADDR=$(solana address)
+          has_funds() {
+            BAL=$(solana balance | awk '{print $1}')
+            echo "balance: $BAL SOL"
+            [ "$(awk -v b="$BAL" 'BEGIN{print (b>=3)?1:0}')" = "1" ]
+          }
+          for i in $(seq 1 5); do
+            has_funds && exit 0
+            solana airdrop 2 || true
+            sleep 8
+          done
+          echo "::warning::Automatic airdrop is rate-limited from CI."
+          echo "::warning::Send >=3 devnet SOL to $ADDR via https://faucet.solana.com (network: DEVNET)."
+          echo "Waiting up to 30 minutes for the wallet to be funded..."
+          for i in $(seq 1 90); do
+            has_funds && exit 0
+            sleep 20
+          done
+          echo "::error::Wallet $ADDR was not funded within 30 minutes. Fund it and re-run."
+          exit 1
+
+      - name: Build (anchor 0.30.1)
+        run: |
+          mkdir -p target/deploy
+          if [ -f /root/devnet-keys/prop_vault-keypair.json ]; then
+            cp /root/devnet-keys/prop_vault-keypair.json target/deploy/prop_vault-keypair.json
+          fi
+          anchor build
+          anchor keys sync
+          # If keys sync touched the program id, rebuild so the binary embeds it.
+          if ! git diff --quiet -- programs/prop-vault/src/lib.rs Anchor.toml; then
+            anchor build
+          fi
+          cp target/deploy/prop_vault-keypair.json /root/devnet-keys/prop_vault-keypair.json
+          echo "== Program id =="
+          solana address -k target/deploy/prop_vault-keypair.json
+
+      - name: Deploy to devnet
+        run: |
+          anchor deploy --provider.cluster devnet --provider.wallet /root/devnet-keys/deploy-wallet.json
+
+      - name: Create test USDC mint (once)
+        run: |
+          if [ ! -f /root/devnet-keys/usdc-mint.txt ]; then
+            spl-token create-token --decimals 6 --output json | python3 -c "import json,sys;print(json.load(sys.stdin)['commandOutput']['address'])" > /root/devnet-keys/usdc-mint.txt
+          fi
+          echo "== USDC mint =="
+          cat /root/devnet-keys/usdc-mint.txt
+
+      - name: Record deployment and push
+        run: |
+          PROGRAM_ID=$(solana address -k /root/devnet-keys/prop_vault-keypair.json)
+          WALLET=$(solana address)
+          MINT=$(cat /root/devnet-keys/usdc-mint.txt)
+          mkdir -p backend/target-idl
+          cp target/idl/prop_vault.json backend/target-idl/prop_vault.json
+          {
+            echo "# Devnet deployment (auto-generated by CI)"
+            echo
+            echo "| What | Value |"
+            echo "|---|---|"
+            echo "| Program ID | \`$PROGRAM_ID\` |"
+            echo "| Deploy wallet (= backend wallet + USDC mint authority) | \`$WALLET\` |"
+            echo "| Test USDC mint (set as USDC_MINT in backend/.env) | \`$MINT\` |"
+            echo "| Explorer | https://explorer.solana.com/address/$PROGRAM_ID?cluster=devnet |"
+            echo
+            echo "The wallet + program keypairs are in this workflow run's"
+            echo "'devnet-keys' artifact (Actions tab, 5-day retention)."
+            echo "Download deploy-wallet.json to backend/keypair.json on your"
+            echo "machine - it is the USDC mint authority, so the backend's"
+            echo "'Get test USDC' faucet must sign with it."
+          } > DEVNET.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DEVNET.md backend/target-idl/prop_vault.json programs/prop-vault/src/lib.rs Anchor.toml
+          git diff --cached --quiet || git commit -m "Record devnet deployment: $PROGRAM_ID [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Upload keys artifact (devnet-only keys, 5-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-keys
+          path: /root/devnet-keys/
+          retention-days: 5
