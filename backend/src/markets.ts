@@ -68,7 +68,11 @@ export class MarketRegistry {
     m.status = "voided"; m.voidTx = txSig; this.save();
   }
   nextId(): number {
-    return this.all().reduce((mx, m) => Math.max(mx, m.spec.marketId), 0) + 1;
+    // Timestamp-based so independent instances (laptop, cloud) never collide
+    // on the on-chain market PDA, which is seeded by this id. Registry max
+    // still wins if it's somehow ahead (e.g. two creates in one second).
+    const maxExisting = this.all().reduce((mx, m) => Math.max(mx, m.spec.marketId), 0);
+    return Math.max(Math.floor(Date.now() / 1000), maxExisting + 1);
   }
 }
 
