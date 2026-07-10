@@ -37,9 +37,11 @@ jobs:
 
       # Persist the deploy wallet, program keypair and USDC mint across runs
       # so a failed run can be re-run (or manually funded) without minting a
-      # new identity every time.
+      # new identity every time. Save happens IMMEDIATELY after creation (not
+      # in a post step) so the wallet survives even if this run fails later.
       - name: Restore devnet keys cache
-        uses: actions/cache@v4
+        id: keys-cache
+        uses: actions/cache/restore@v4
         with:
           path: /root/devnet-keys
           key: devnet-keys-v1
@@ -53,6 +55,25 @@ jobs:
           solana config set --url devnet --keypair /root/devnet-keys/deploy-wallet.json
           echo "== Deploy wallet address =="
           solana address
+
+      - name: Save devnet keys cache (immediately, survives run failure)
+        if: steps.keys-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /root/devnet-keys
+          key: devnet-keys-v1
+
+      - name: Publish wallet address to repo (public key only)
+        run: |
+          ADDR=$(solana address)
+          if [ ! -f DEPLOY-WALLET.txt ] || [ "$(cat DEPLOY-WALLET.txt)" != "$ADDR" ]; then
+            echo "$ADDR" > DEPLOY-WALLET.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add DEPLOY-WALLET.txt
+            git commit -m "Record deploy wallet address: $ADDR [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
 
       - name: Fund wallet (airdrop, then wait for manual faucet if rate-limited)
         run: |
