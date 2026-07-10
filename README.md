@@ -2,15 +2,69 @@
 
 **Track:** Prediction Markets & Settlement (TxODDS World Cup Hackathon, Superteam Earn)
 
-Stake USDC on simple match props. The moment the match ends, anyone can submit
-TxLINE's Merkle proof to our Solana program, which CPIs into TxLINE's
-`validate_stat` to prove the outcome **on-chain** — no oracle vote, no 2-hour
-dispute window, no trusting our server. Winners split the losing pool
-pari-mutuel style, so there is always a counterparty.
+Stake test-USDC on simple match props ("Spain beat Belgium?"). The moment the
+match ends, **anyone** can submit TxLINE's Merkle proof to our Solana program,
+which CPIs into TxLINE's `validate_stat` to prove the outcome **on-chain** —
+no oracle vote, no dispute window, no trusting our server. Winners split the
+losing pool pari-mutuel style, so there is always a counterparty.
 
-Elsewhere, prediction-market settlement takes a minimum of two hours and can
-stretch to days in disputes. Here it takes one transaction, and every market
-page shows the receipt: settlement tx, TxLINE sequence, Merkle root.
+## Live deployment (devnet)
+
+| What | Where |
+|---|---|
+| **App** | *Render URL — see submission form* |
+| **prop_vault program** | [`FNs8ZdNpTuAEsVmAwNUW5mhPU5bSukJ698TwF5rq3fgA`](https://explorer.solana.com/address/FNs8ZdNpTuAEsVmAwNUW5mhPU5bSukJ698TwF5rq3fgA?cluster=devnet) |
+| **Test USDC mint** | [`FWJiwiotctjZcgqe37sfRRfZh2hqEKZ31syc3GFS4PbU`](https://explorer.solana.com/address/FWJiwiotctjZcgqe37sfRRfZh2hqEKZ31syc3GFS4PbU?cluster=devnet) |
+| **TxLINE oracle (devnet)** | `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J` |
+| **Deployment record** | [DEVNET.md](DEVNET.md) · toolchain notes: [BUILD-NOTES.md](BUILD-NOTES.md) |
+
+Try it: open the app → connect Phantom (devnet mode) → **Get test USDC** →
+stake YES or NO on an open market → after full time, watch the market flip to
+*Settled* and open the receipt (settlement tx, Merkle root, TxLINE sequence).
+
+## The problem
+
+Prediction-market settlement today is the slow, disputed part: centralized
+books settle when their trading desk confirms; on-chain markets typically wait
+for an oracle vote or an optimistic-challenge window — **two hours to six
+days**, and the operator (or token-holder vote) can misresolve.
+
+## The solution
+
+TxLINE anchors a Merkle root of every match statistic on Solana daily. Prop
+Vault stores each market's predicate **on-chain at creation** (stat key(s),
+comparison, threshold, period, time gates). Settlement is one permissionless
+transaction:
+
+1. Anyone fetches the proof bundle from TxLINE (`/api/scores/stat-validation`).
+2. They call our `settle` instruction with it.
+3. The program **rebuilds the predicate from stored market state** (never from
+   caller input), CPIs into `txoracle.validate_stat`, which verifies the
+   Merkle proof against the on-chain daily root and returns the outcome.
+4. Winners claim: own stake + pro-rata share of the losing pool − 1% fee.
+
+Our keeper does this automatically at full time — but it is a convenience,
+not an authority. Kill it and settle with `curl`; the chain doesn't care who
+you are. That's the demo's money shot.
+
+## Security design (the stat-substitution attack we closed)
+
+A naive integration lets the settler choose *which stat* to prove — proving a
+*corners* count against a *goals* market, or a half-time snapshot against a
+full-time market, and still satisfying the predicate. Prop Vault pins
+everything at creation and enforces it in `settle`:
+
+- proven `stat_key` / `stat_key2` must equal the market's stored keys
+- proven `period` must equal the market's stored period
+- the proof's fixture id must match, and its update window must extend past
+  match end (`maxTimestamp ≥ settle_after_ts`) — mid-match proofs rejected
+- predicate (threshold/comparison/operator) is rebuilt from stored state
+- `void_after_ts` opens full refunds for abandoned/postponed fixtures
+- one-sided pools auto-void instead of trapping the losing side's funds
+
+Honest trust assumption: TxODDS is the data source. What Prop Vault removes is
+trust in **resolution and custody** — the operator cannot misreport an outcome
+or freeze funds.
 
 ## Architecture
 
@@ -23,80 +77,88 @@ frontend ◄── /markets /live /markets/:id/receipt ◄── Express API
 USDC ◄──► prop_vault program: create / stake / settle / void / claim (pari-mutuel)
 ```
 
-## TxLINE endpoints used (for the submission doc)
-- `POST /auth/guest/start`, on-chain `subscribe` (free tier level 1), `POST /api/token/activate`
-- `GET /api/scores/stream` (SSE)
+- **Program** (`programs/prop-vault`, Anchor 0.30.1): `create_market`,
+  `stake`, `settle` (CPI + guards above), `void`, `claim`. TxLINE CPI types
+  are generated straight from the vendored IDL via `declare_program!` —
+  see `idls/txoracle.json`.
+- **Backend** (`backend/`, Node/Express/TypeScript): TxLINE free-tier
+  onboarding (on-chain subscribe + token activation), SSE ingest with
+  auto-reconnect, JSONL recorder, replay engine, keeper, REST API, and the
+  static frontend. Runs with **zero configuration** on devnet — every setting
+  has a working default, including an auto-generated admin key
+  (`data/admin-key.txt`).
+- **CI** (`.github/workflows/devnet-deploy.yml`): builds in the official
+  Anchor image and deploys the program to devnet; commits `DEVNET.md` with
+  the resulting addresses.
+
+## Market templates (scope-disciplined: three)
+
+| Template | Predicate proved on-chain |
+|---|---|
+| `homeWin` | home goals − away goals > 0 (Subtract + GreaterThan) |
+| `cornersOver` | team corners > n |
+| `goalsOver` | home goals + away goals > n (Add operator) |
+
+The design is sport-agnostic: any TxLINE stat key can back a market — paid
+TxLINE tiers unlock 1000+ leagues with zero code changes.
+
+## API
+
+Public: `GET /markets`, `GET /markets/:id`, `GET /markets/:id/receipt`,
+`GET /live` (SSE mirror), `GET /health`, `POST /tx/stake`, `POST /tx/claim`,
+`POST /faucet` (test USDC), `GET /positions/:address`.
+
+Admin (header `x-admin-key`): `POST /admin/markets` (create from template),
+`GET /admin/live-fixtures` (fixtures currently producing updates),
+`GET /admin/txline?path=/api/...` (authenticated TxLINE passthrough).
+
+Create a market:
+```bash
+curl -X POST $HOST/admin/markets -H "x-admin-key: $ADMIN_KEY" -H "content-type: application/json" \
+  -d '{"template":"homeWin","fixtureId":18218149,"kickoffTs":1783710000,"label":"Spain beat Belgium?"}'
+```
+
+## TxLINE endpoints used (submission requirement)
+
+- `POST /auth/guest/start` → on-chain `subscribe` (free tier, level 1) → `POST /api/token/activate`
+- `GET /api/scores/stream` (SSE live scores)
+- `GET /api/fixtures/snapshot` (upcoming fixture metadata → market creation)
 - `GET /api/scores/snapshot/{fixtureId}`
 - `GET /api/scores/updates/{epochDay}/{hour}/{interval}`
 - `GET /api/scores/stat-validation` → Merkle proof bundle → CPI `validate_stat`
 
-## Setup
+## Deploy your own
 
+**Cloud (Render):** New + → *Blueprint* → pick this repo. [`render.yaml`](render.yaml)
+configures everything; when prompted, paste the contents of your
+`backend/keypair.json` into `KEYPAIR_JSON`. The disk keeps markets,
+recordings, and the admin key across restarts.
+
+**Program (devnet):** push to the deploy branch or run the *Deploy to Solana
+devnet* GitHub Action — it builds in the official Anchor 0.30.1 image, funds
+a cached wallet (manual faucet fallback), deploys, and records addresses in
+`DEVNET.md`. Toolchain details and pinned-dependency rationale:
+[BUILD-NOTES.md](BUILD-NOTES.md).
+
+**Local:**
 ```bash
-# 1. wallet + devnet SOL
-solana-keygen new -o backend/keypair.json && solana airdrop 2 -k backend/keypair.json --url devnet
-
-# 2. TxLINE devnet IDL -> idls/txoracle.json
-#    https://txline.txodds.com/documentation/programs/devnet
-
-# 3. test USDC on devnet
-spl-token create-token --decimals 6      # put mint in backend/.env USDC_MINT
-spl-token create-account <MINT> && spl-token mint <MINT> 1000
-
-# 4. build + deploy program
-anchor keys sync && anchor build && anchor deploy   # updates declare_id + Anchor.toml
-
-# 5. backend
-cd backend && cp .env.example .env  # fill in
-npm i && npm run dev
+cd backend
+npm install                        # Node 20+
+# put a funded devnet wallet at backend/keypair.json
+npx tsx src/server.ts              # zero further config on devnet
 ```
+Demo replay mode (no live match needed): set `REPLAY_FILE=data/recordings/<file>.jsonl`
+and `REPLAY_SPEED=20` in `backend/.env` — recorded events stream through the
+exact same pipeline, including settlement.
 
-Create a market:
-```bash
-curl -X POST localhost:8787/admin/markets -H 'x-admin-key: ...' -H 'content-type: application/json' \
-  -d '{"template":"homeWin","fixtureId":17952170,"kickoffTs":1752170400,"label":"France beat Brazil?"}'
+## Repo map
+
 ```
-
-## Verification status
-1. ~~txoracle IDL field names~~ **CLOSED** — devnet IDL v1.5.2 fetched from official
-   docs and vendored at idls/txoracle.json; lib.rs/vault.ts reconciled
-   (ScoresBatchSummary, StatTerm, TraderPredicate(i32), daily_scores_merkle_roots).
-2. ~~`add` operator~~ **CLOSED** — BinaryExpression = {Add, Subtract}; goalsOver is
-   viable. Comparison also has EqualTo (draw markets possible later).
-   Also added on-chain guards pinning proven stat key + period to market params
-   (prevents proving corners against a goals market).
-3. **CU headroom** — docs budget 1.4M CU for `validate_stat` alone (the tx max).
-   Test a real settle on devnet immediately. If our wrapper overhead overflows:
-   fallback A = pass a smaller proof (fewer nodes late in the day tree);
-   fallback B = split settle into `record_validation` (CPI only, stores bool in a
-   scratch PDA) + `finalize` (reads scratch, pays) — two txs, still trustless.
-4. **ScoreStat period code for full match** — templates assume 0; confirm the first
-   time a real proof is fetched (print statToProve.period) and adjust markets.ts.
-5. **SSE payload field names** — connect once, print raw events, fix the
-   defensive parsing in `keeper.ts` (`fixtureId`/`phase`/`seq`).
-6. **Timestamp units** — proofs use ms in docs; program compares against unix
-   seconds `settle_after_ts`. Normalize once confirmed (assert in `settle`).
-7. **Start recording matches TODAY** (`npm run dev` records by default).
-   The demo video depends on having at least one full recorded match.
-
-## Security notes (put a short version in the submission)
-- Settlement is permissionless; the predicate is stored at market creation and
-  cannot be swapped by the caller. The proof is verified against TxLINE's
-  on-chain daily Merkle root — the keeper is a convenience, not an authority.
-- Mid-match proof injection is blocked two ways: time gate (`settle_after_ts`)
-  and proof-window assertion (`maxTimestamp` must extend past match end).
-- Abandoned/cancelled/postponed matches: `void_after_ts` opens full refunds.
-- One-sided pools auto-void instead of trapping funds.
-- Trust assumption stated honestly: TxODDS is the data source. What's removed
-  is trust in *resolution and custody* — the operator (us) cannot misreport an
-  outcome or freeze funds.
-
-## Demo video script (≤5 min, judges score heavily on this)
-1. (30s) Problem: settlement elsewhere = 2 hours to 6 days + disputes.
-2. (60s) Stake USDC on "France beat Brazil?" from two wallets, YES and NO.
-3. (90s) Replay mode on-screen: goals stream in, phase flips to F, keeper logs
-   proof fetch, settle tx lands. Stopwatch overlay: full-time → settled.
-4. (60s) Receipt page: explorer link, Merkle root, TxLINE seq. Claim payout.
-5. (30s) Kill the keeper live, settle another market manually with curl —
-   "anyone can settle; that's what trustless means."
-6. (30s) Architecture slide + honest TxLINE API feedback.
+programs/prop-vault/   Anchor program (pari-mutuel vault + CPI settlement)
+idls/txoracle.json     vendored TxLINE devnet IDL (drives declare_program!)
+backend/               API + keeper + recorder + replay + frontend (public/)
+.github/workflows/     CI: devnet program deploy, wallet export helper
+DEVNET.md              deployed addresses (auto-generated by CI)
+BUILD-NOTES.md         exact toolchain pairing + why Cargo.lock is pinned
+PLAYBOOK.md            build log / operator runbook
+```

@@ -40,11 +40,25 @@ function loadOrCreateAdminKey(): string {
   return key;
 }
 
+// Cloud hosts (Railway etc.) inject the wallet as an env var instead of a
+// file: set KEYPAIR_JSON to the contents of keypair.json ("[12,34,...]") and
+// it is materialized into the data dir at boot.
+function resolveKeypairPath(): string {
+  if (process.env.KEYPAIR_PATH) return path.resolve(process.env.KEYPAIR_PATH);
+  if (process.env.KEYPAIR_JSON) {
+    const p = path.join(dataDir, "keypair.json");
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(p, process.env.KEYPAIR_JSON, { mode: 0o600 });
+    return p;
+  }
+  return path.resolve("keypair.json");
+}
+
 export const CFG = {
   network,
   port: Number(process.env.PORT ?? 8787),
   dataDir,
-  keypairPath: process.env.KEYPAIR_PATH ?? path.resolve("keypair.json"),
+  keypairPath: resolveKeypairPath(),
   adminKey: loadOrCreateAdminKey(),
   replayFile: process.env.REPLAY_FILE || null,
   replaySpeed: Number(process.env.REPLAY_SPEED ?? 1),

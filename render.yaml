@@ -1,0 +1,23 @@
+# Render Blueprint: deploys the Prop Vault backend + frontend as one service.
+# In Render: New + -> Blueprint -> pick this repo -> it reads this file.
+# Set KEYPAIR_JSON when prompted (paste the contents of backend/keypair.json).
+services:
+  - type: web
+    name: prop-vault
+    runtime: node
+    rootDir: backend
+    plan: starter # has a persistent disk; 'free' works but loses markets.json on restarts and sleeps when idle
+    buildCommand: npm install
+    startCommand: npx tsx src/server.ts
+    healthCheckPath: /health
+    disk:
+      name: prop-vault-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: NETWORK
+        value: devnet
+      - key: KEYPAIR_JSON
+        sync: false # paste the [12,34,...] array from backend/keypair.json in the dashboard
