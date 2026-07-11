@@ -98,6 +98,17 @@ async function main() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Browser signs, we send: routes the raw tx to OUR devnet RPC so the
+  // user's wallet network setting can never swallow a transaction.
+  app.post("/tx/submit", async (req, res) => {
+    try {
+      const { signedTx } = req.body;
+      if (!signedTx) return res.status(400).json({ error: "need signedTx (base64)" });
+      const sig = await vault.submitSignedTx(String(signedTx));
+      res.json({ signature: sig });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // A wallet's positions across all markets, with honest payout math.
   app.get("/positions/:address", async (req, res) => {
     try {
