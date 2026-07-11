@@ -179,6 +179,17 @@ export class VaultClient {
     return this.toUnsignedBase64(tx, user);
   }
 
+  /** Submit a signed transaction to OUR devnet RPC and wait for confirmation.
+   *  Keeps Phantom's network setting out of the send path entirely. */
+  async submitSignedTx(b64: string): Promise<string> {
+    const raw = Buffer.from(b64, "base64");
+    const conn = this.provider.connection;
+    const sig = await conn.sendRawTransaction(raw, { skipPreflight: false });
+    const bh = await conn.getLatestBlockhash();
+    await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
+    return sig;
+  }
+
   /** On-chain pool sizes + state for one market (USDC display units). */
   async fetchPools(marketId: number): Promise<{ yesPool: number; noPool: number; state: number; outcomeYes: boolean; settledTs: number } | null> {
     try {

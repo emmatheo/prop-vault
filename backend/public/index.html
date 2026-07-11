@@ -194,7 +194,17 @@ $("#faucetBtn").onclick=async()=>{
 async function signAndSend(b64){
   if(!web3) web3=await import("https://esm.sh/@solana/web3.js@1.95.3");
   const tx=web3.Transaction.from(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));
-  const {signature}=await window.phantom.solana.signAndSendTransaction(tx);
+  const ph=window.phantom.solana;
+  // Phantom only SIGNS; the backend submits to devnet and waits for
+  // confirmation. This way Phantom's network setting can't swallow the tx,
+  // and by the time we return, the stake is on-chain and shows immediately.
+  if(ph.signTransaction){
+    const signed=await ph.signTransaction(tx);
+    const b64signed=btoa(String.fromCharCode(...signed.serialize()));
+    const r=await postJ("/tx/submit",{signedTx:b64signed});
+    return r.signature;
+  }
+  const {signature}=await ph.signAndSendTransaction(tx); // fallback
   return signature;
 }
 
@@ -337,7 +347,7 @@ function openSheet(marketId,sideYes){
       const {tx}=await postJ("/tx/stake",{address:wallet,marketId,sideYes,amount:a});
       const sig=await signAndSend(tx);
       toast(`Stake placed. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View transaction</a>`,"ok");
-      closeSheet(); setTimeout(refresh,2500);
+      closeSheet(); refresh(); setTimeout(refresh,4000);
     }catch(e){ toast("Stake failed: "+(e.message||"wallet rejected"),"err");
       $("#confirmBtn").disabled=false; $("#confirmBtn").textContent=`Stake ${sideYes?"YES":"NO"}`; }
   };
@@ -350,7 +360,7 @@ async function claim(marketId,btn){
     const {tx}=await postJ("/tx/claim",{address:wallet,marketId});
     const sig=await signAndSend(tx);
     toast(`Paid out. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View transaction</a>`,"ok");
-    setTimeout(refresh,2500);
+    refresh(); setTimeout(refresh,4000);
   }catch(e){ toast("Claim failed: "+(e.message||"wallet rejected"),"err"); btn.disabled=false; btn.textContent="Claim payout"; }
 }
 
