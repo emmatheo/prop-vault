@@ -146,6 +146,18 @@ async function main() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Fallback for wallets that can sign but not send (no signAndSendTransaction):
+  // browser signs, we submit through OUR RPC so wallet network settings never matter.
+  app.post("/tx/submit", async (req, res) => {
+    try {
+      if (!vault) return res.status(503).json({ error: "submitting opens when the contract finishes deploying" });
+      const { tx } = req.body;
+      if (!tx || typeof tx !== "string") return res.status(400).json({ error: "need tx (base64 signed transaction)" });
+      const sig = await vault.submitSignedTx(tx);
+      res.json({ ok: true, tx: sig });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post("/tx/claim", async (req, res) => {
     try {
       const { address, marketId } = req.body;

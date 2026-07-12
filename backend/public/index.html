@@ -61,8 +61,12 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 @keyframes goalflash{0%{box-shadow:0 0 0 3px var(--live),0 0 60px rgba(52,226,122,.55);border-color:var(--live)}
  100%{box-shadow:0 0 0 0 transparent}}
 @media(prefers-reduced-motion:reduce){.fx,body::before,.hero h1 b,.tab.on::after{animation:none}}
-.mhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.team{flex:1;text-align:center;font-weight:700;font-size:15px;line-height:1.25}
+.mhead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.team{flex:1;text-align:center;font-weight:700;font-size:15px;line-height:1.3;min-width:0}
+.team .nm{display:block;margin-top:2px;word-break:break-word}
+.team.long .nm{font-size:12.5px}
+.team.tbdteam .nm{color:var(--mut);font-weight:600}
+.team .sub{display:block;font-size:9px;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;margin-top:2px}
 .tbadge{display:block;margin:0 auto 6px;height:40px}
 .tflag{font-size:34px;line-height:40px;display:inline-block;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
 .tmono{display:inline-flex;width:40px;height:40px;border-radius:12px;background:linear-gradient(140deg,#26263a,#101014);
@@ -151,6 +155,12 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .arch .s{font-family:var(--disp);font-weight:700;font-size:20px;white-space:nowrap}
 .arch .m{color:var(--mut);font-size:11px;font-family:var(--mono)}
 .confetti{position:fixed;inset:0;z-index:70;pointer-events:none}
+.wopt{display:flex;align-items:center;gap:12px;width:100%;background:rgba(255,255,255,.03);border:1px solid var(--line);
+ color:var(--txt);border-radius:12px;padding:13px 14px;margin-top:10px;font-weight:700;font-size:14px;text-align:left;transition:border-color .15s}
+.wopt:hover{border-color:var(--violet)}
+.wopt .wic{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;
+ background:linear-gradient(140deg,#26263a,#101014);border:1px solid var(--line);font-size:16px}
+.wopt .wd{font-size:11px;color:var(--mut);font-weight:500;margin-top:1px}
 .sechead{font-size:11px;font-weight:700;letter-spacing:1.4px;color:var(--mut);text-transform:uppercase;margin:22px 0 2px;display:flex;align-items:center;gap:8px}
 .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
 :focus-visible{outline:2px solid var(--violet);outline-offset:2px}
@@ -180,7 +190,11 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   </div>
 
   <div id="phantomHint" class="hint" hidden>
-    <b>No wallet detected.</b> Browse freely; to stake, install <a href="https://phantom.app" target="_blank" rel="noopener">Phantom</a>. Devnet testing: Phantom → Settings → Developer settings → Testnet mode.
+    <b>No Solana wallet detected.</b> Browse freely; to stake, install
+    <a href="https://phantom.app" target="_blank" rel="noopener">Phantom</a>,
+    <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or
+    <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>.
+    On mobile, open this page inside your wallet app's built-in browser. Devnet testing: wallet Settings → Developer settings → Testnet mode.
   </div>
 
   <div class="tabs">
@@ -200,7 +214,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
 const FEE=0.01, TERMINAL=[5,10,13];
-let markets=[],archive=[],upcoming=[],health=null,tab="matches",wallet=null,positions=[],holdings=null,live={},web3=null,goalFx=null;
+let markets=[],archive=[],upcoming=[],health=null,tab="matches",wallet=null,walletProvider=null,walletName=null,positions=[],holdings=null,live={},web3=null,goalFx=null;
 
 /* ================= sound: everything synthesized in-browser =================
    No audio files, no CDN samples — a procedural far-crowd ambience (filtered
@@ -301,18 +315,39 @@ latvia:"LV",lithuania:"LT",belarus:"BY",moldova:"MD",luxembourg:"LU",malta:"MT",
 "trinidad and tobago":"TT","el salvador":"SV",guatemala:"GT",cuba:"CU",haiti:"HT","dominican republic":"DO",
 curacao:"CW","curaçao":"CW",suriname:"SR","new caledonia":"NC"};
 const isoFlag=cc=>String.fromCodePoint(...[...cc.toUpperCase()].map(c=>127397+c.charCodeAt(0)));
+const norm=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toLowerCase();
 function flagOf(name,code){
   if(code&&/^[A-Za-z]{2}$/.test(code))return isoFlag(code);
-  const n=String(name||"").trim().toLowerCase();
+  const n=norm(name);
   if(FLAG_TAG[n])return FLAG_TAG[n];
   if(ISO[n])return isoFlag(ISO[n]);
   return null;
 }
+/* "TBD — SF1 winner" placeholders from upcoming.json render as a clean
+   sub-labelled slot instead of one long cryptic string. */
+function teamName(name){
+  const raw=String(name||"").trim();
+  if(!raw)return{label:"TBD",tbd:true};
+  if(/^tbd/i.test(raw)){
+    const rest=raw.replace(/^tbd\s*[—–-]*\s*/i,"").trim();
+    return{label:rest||"To be decided",tbd:true};
+  }
+  return{label:raw,tbd:false};
+}
 function badge(name,code){
-  const fl=flagOf(name,code);
+  const fl=name?flagOf(name,code):null;
   if(fl)return `<span class="tbadge"><span class="tflag" role="img" aria-label="${esc(name)} flag">${fl}</span></span>`;
-  const ini=String(name||"?").replace(/[^A-Za-z0-9 ]/g," ").trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?";
+  const ini=name?String(name).replace(/[^A-Za-z0-9 ]/g," ").trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?":"?";
   return `<span class="tbadge"><span class="tmono">${esc(ini)}</span></span>`;
+}
+function teamHtml(name,code){
+  const t=teamName(name);
+  const long=t.label.length>12;
+  return `<div class="team${t.tbd?" tbdteam":""}${long?" long":""}">
+    ${badge(t.tbd?null:t.label,code)}
+    <span class="nm">${esc(t.label)}</span>
+    ${t.tbd?`<span class="sub">to be decided</span>`:""}
+  </div>`;
 }
 const inlineFlag=(name,code)=>{const f=flagOf(name,code);return f?f+" ":"";};
 
@@ -349,7 +384,9 @@ async function init(){
     $("#replayPill").hidden=health.mode!=="replay";
     if(health.contract&&String(health.contract).includes("demo")) toast("Demo mode: staking opens once the contract deploy completes.","");
   }catch{$("#netPill").textContent="OFFLINE";toast("Backend unreachable — start it, then refresh.","err");}
-  if(!window?.phantom?.solana)$("#phantomHint").hidden=false;
+  // wallets inject asynchronously — check now and again shortly after load
+  const hintCheck=()=>{$("#phantomHint").hidden=detectWallets().length>0;};
+  hintCheck();setTimeout(hintCheck,1200);
   await refresh(); startSSE(); setInterval(refresh,15000);
 }
 async function refresh(){
@@ -395,17 +432,73 @@ function detectSettlements(){
   }
 }
 
-/* wallet + faucet */
-$("#walletBtn").onclick=async()=>{
-  const ph=window?.phantom?.solana;
-  if(!ph){window.open("https://phantom.app","_blank");return;}
-  if(wallet){await ph.disconnect().catch(()=>{});wallet=null;positions=[];holdings=null;
-    $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;updateHoldPill();render();return;}
-  try{const r=await ph.connect();wallet=r.publicKey.toString();
+/* ============ wallet: connect to ANY injected Solana wallet ============
+   Every major Solana wallet (Phantom, Solflare, Backpack, Brave, Exodus,
+   Glow, Trust, Coinbase, …) injects a provider with the same connect /
+   signTransaction interface. We detect them all, connect directly if there
+   is exactly one, and show a picker when there are several. */
+function detectWallets(){
+  const seen=new Set(),out=[];
+  const add=(name,p)=>{if(!p||typeof p.connect!=="function"||seen.has(p))return;seen.add(p);out.push({name,p});};
+  add("Phantom",window.phantom?.solana);
+  add("Solflare",window.solflare);
+  add("Backpack",window.backpack?.solana??window.backpack);
+  add("Brave Wallet",window.braveSolana);
+  add("Glow",window.glow?.solana??window.glowSolana);
+  add("Exodus",window.exodus?.solana);
+  add("Trust Wallet",window.trustwallet?.solana);
+  add("Coinbase Wallet",window.coinbaseSolana);
+  if(window.solana){const p=window.solana;
+    add(p.isPhantom?"Phantom":p.isSolflare?"Solflare":p.isBraveWallet?"Brave Wallet":p.isExodus?"Exodus":p.isGlow?"Glow":p.isTrust||p.isTrustWallet?"Trust Wallet":"Solana wallet",p);}
+  return out;
+}
+function setDisconnected(){
+  wallet=null;walletProvider=null;walletName=null;positions=[];holdings=null;
+  $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;
+  updateHoldPill();render();
+}
+async function connectTo(w){
+  closeSheet();
+  try{
+    const r=await w.p.connect();
+    const pk=r?.publicKey??w.p.publicKey;
+    if(!pk)throw new Error("wallet returned no account");
+    walletProvider=w.p;walletName=w.name;wallet=pk.toString();
     $("#walletBtn").textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
     $("#faucetBtn").hidden=health?.network!=="devnet";
-    toast("Wallet connected.","ok");refresh();
-  }catch{toast("Connection cancelled.","err");}
+    try{w.p.on?.("disconnect",setDisconnected);}catch{}
+    toast(`${esc(w.name)} connected.`,"ok");refresh();
+  }catch(e){toast("Connection cancelled"+(e?.message?": "+esc(e.message):".")+"","err");}
+}
+function openWalletPicker(ws){
+  $("#sheet").innerHTML=`<h3>Choose a wallet</h3>
+    <div class="note">These Solana wallets were detected in your browser.</div>
+    ${ws.map((w,i)=>`<button class="wopt" data-wallet="${i}">
+      <span class="wic">👛</span><span>${esc(w.name)}<span class="wd">Detected — tap to connect</span></span>
+    </button>`).join("")}
+    <div class="sides" style="margin-top:14px"><button class="btn btn-g side" id="cancelBtn">Cancel</button></div>`;
+  $("#sheet").classList.add("open");$("#sheetBack").classList.add("open");
+  $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  document.querySelectorAll("[data-wallet]").forEach(b=>b.onclick=()=>connectTo(ws[Number(b.dataset.wallet)]));
+}
+function openWalletHelp(){
+  $("#sheet").innerHTML=`<h3>No Solana wallet found</h3>
+    <div class="note" style="font-size:13px;line-height:1.7;margin-top:10px">
+      Install one of these, then refresh this page. On <b>mobile</b>, wallets can only inject into their own
+      in-app browser — open this site from inside the wallet app.</div>
+    <a class="wopt" href="https://phantom.app" target="_blank" rel="noopener"><span class="wic">👻</span><span>Phantom<span class="wd">phantom.app</span></span></a>
+    <a class="wopt" href="https://solflare.com" target="_blank" rel="noopener"><span class="wic">🔆</span><span>Solflare<span class="wd">solflare.com</span></span></a>
+    <a class="wopt" href="https://backpack.app" target="_blank" rel="noopener"><span class="wic">🎒</span><span>Backpack<span class="wd">backpack.app</span></span></a>
+    <div class="sides" style="margin-top:14px"><button class="btn btn-g side" id="cancelBtn">Close</button></div>`;
+  $("#sheet").classList.add("open");$("#sheetBack").classList.add("open");
+  $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+}
+$("#walletBtn").onclick=async()=>{
+  if(wallet){try{await walletProvider?.disconnect?.();}catch{}setDisconnected();return;}
+  const ws=detectWallets();
+  if(!ws.length){openWalletHelp();return;}
+  if(ws.length===1)return connectTo(ws[0]);
+  openWalletPicker(ws);
 };
 $("#faucetBtn").onclick=async()=>{
   if(!wallet)return;$("#faucetBtn").disabled=true;$("#faucetBtn").textContent="Minting…";
@@ -417,10 +510,19 @@ $("#faucetBtn").onclick=async()=>{
   $("#faucetBtn").disabled=false;$("#faucetBtn").textContent="Get test USDC";
 };
 async function signAndSend(b64){
+  if(!walletProvider)throw new Error("connect a wallet first");
   if(!web3)web3=await import("https://esm.sh/@solana/web3.js@1.95.3");
   const tx=web3.Transaction.from(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));
-  const {signature}=await window.phantom.solana.signAndSendTransaction(tx);
-  return signature;
+  if(typeof walletProvider.signAndSendTransaction==="function"){
+    const r=await walletProvider.signAndSendTransaction(tx);
+    return typeof r==="string"?r:r.signature;
+  }
+  // wallets that only sign: submit through the backend's RPC instead
+  const signed=await walletProvider.signTransaction(tx);
+  const bytes=signed.serialize();
+  let bin="";for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  const r=await postJ("/tx/submit",{tx:btoa(bin)});
+  return r.tx;
 }
 
 function switchTab(t){
@@ -469,25 +571,26 @@ function renderMatches(){
     const isLive=s.phase!=null&&!TERMINAL.includes(Number(s.phase));
     const isDone=s.phase!=null&&TERMINAL.includes(Number(s.phase));
     const n1=fx.name1??"Home",n2=fx.name2??"Away";
+    const t1=teamName(n1),t2=teamName(n2);
     const untitled=!fx.name1&&!fx.name2;
     const head=mks.find(m=>/beat|win/i.test(m.question))??mks[0];
     const p=head?.pools, tot=p?(p.yesPool+p.noPool):0;
     const yes=tot>0?p.yesPool/tot:null;
     return `<div class="fx" data-fxid="${f}">
       <div class="mhead">
-        <div class="team">${badge(n1,fx.code1)}${esc(n1)}</div>
+        ${teamHtml(n1,fx.code1)}
         <div class="mid">
           ${isLive?`<span class="chip live">● LIVE</span>`:isDone?`<span class="chip ft">FULL TIME</span>`:`<span class="chip up">UPCOMING</span>`}
           ${scoreHtml(s)}
           <div class="ko">${untitled?`Fixture #${f}`:""} ${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
         </div>
-        <div class="team">${badge(n2,fx.code2)}${esc(n2)}</div>
+        ${teamHtml(n2,fx.code2)}
       </div>
       ${formRow(fx.name1,fx.name2)}
       <div class="whot">Who will win? · market-implied</div>
       ${yes!=null?`<div class="rings">
-        <div class="ring">${ring(yes,"var(--live)","W")}<div class="lab">${esc(n1)} <b>${Math.round(yes*100)}%</b></div></div>
-        <div class="ring">${ring(1-yes,"var(--lose)","L")}<div class="lab">${esc(n2)}/draw <b>${Math.round((1-yes)*100)}%</b></div></div>
+        <div class="ring">${ring(yes,"var(--live)","W")}<div class="lab">${esc(t1.label)} <b>${Math.round(yes*100)}%</b></div></div>
+        <div class="ring">${ring(1-yes,"var(--lose)","L")}<div class="lab">${esc(t2.label)}/draw <b>${Math.round((1-yes)*100)}%</b></div></div>
       </div>`:`<div class="ko" style="margin-top:8px">Rings fill from the first stakes — pools are empty, be first in.</div>`}
       ${mks.map(marketRow.bind(null,now)).join("")}
     </div>`;
@@ -500,12 +603,12 @@ function renderMatches(){
     const n1=fx.name1??"TBD",n2=fx.name2??"TBD";
     return `<div class="fx">
       <div class="mhead">
-        <div class="team">${badge(n1,fx.code1)}${esc(n1)}</div>
+        ${teamHtml(n1,fx.code1)}
         <div class="mid"><span class="chip up">UPCOMING</span>
           <div class="score">– : –</div>
           <div class="ko">${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
         </div>
-        <div class="team">${badge(n2,fx.code2)}${esc(n2)}</div>
+        ${teamHtml(n2,fx.code2)}
       </div>
       ${formRow(fx.name1,fx.name2)}
       <div class="ko" style="margin-top:10px">${countdown(fx.kickoff)||"Kickoff time to be confirmed"} · markets open before kickoff</div>
@@ -550,7 +653,7 @@ function renderMine(){
   return hold+positions.map(r=>{
     const p=r.pools||{yesPool:0,noPool:0};
     const fx=r.fixture||{};
-    const vs=fx.name1?`<div class="vsline">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1)} vs ${esc(fx.name2||"?")} ${inlineFlag(fx.name2,fx.code2)}</div>`:"";
+    const vs=fx.name1?`<div class="vsline">${inlineFlag(fx.name1,fx.code1)}${esc(teamName(fx.name1).label)} vs ${esc(teamName(fx.name2).label)} ${inlineFlag(fx.name2,fx.code2)}</div>`:"";
     const s=live[r.fixtureId]||{};
     const ftNow=(s.phase!=null&&TERMINAL.includes(Number(s.phase)))||(r.settleAfterTs&&now>r.settleAfterTs);
     let cls="",top="",line="",act="";
@@ -602,7 +705,7 @@ function renderArchive(){
   return `<div class="hint"><b>Verified archive.</b> Final scores as recorded live from the TxLINE feed by this node.</div>`+
     archive.map(r=>{const fx=r.fixture||{};
     return `<div class="arch">
-      <div><div style="font-weight:700">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1??"Fixture")} vs ${esc(fx.name2??("#"+r.fixtureId))} ${inlineFlag(fx.name2,fx.code2)}</div>
+      <div><div style="font-weight:700">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1?teamName(fx.name1).label:"Fixture")} vs ${esc(fx.name2?teamName(fx.name2).label:("#"+r.fixtureId))} ${inlineFlag(fx.name2,fx.code2)}</div>
       <div class="m">${r.endedAt?new Date(r.endedAt).toLocaleString():""} · fx${r.fixtureId}</div></div>
       <div class="s">${r.h??"?"} : ${r.a??"?"}</div>
     </div>`;}).join("");
@@ -692,7 +795,7 @@ function startSSE(){
     if((prevH!=null||prevA!=null)&&((h!=null&&h!==prevH)||(a!=null&&a!==prevA))){
       sfx.goal();goalFx=f;
       const fx=(markets.find(m=>m.fixtureId===f)||{}).fixture||{};
-      toast(`⚽ <b>GOAL</b> — ${esc(fx.name1??"Home")} ${s.home??"?"} : ${s.away??"?"} ${esc(fx.name2??"Away")}`,"ok");
+      toast(`⚽ <b>GOAL</b> — ${esc(teamName(fx.name1??"Home").label)} ${s.home??"?"} : ${s.away??"?"} ${esc(teamName(fx.name2??"Away").label)}`,"ok");
     }
     // final whistle: pull positions so "settling…" appears immediately
     if(ph!=null&&TERMINAL.includes(Number(ph))&&prevPhase!==ph&&wallet)setTimeout(refresh,1500);
