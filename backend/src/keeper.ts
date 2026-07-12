@@ -108,9 +108,20 @@ export class Keeper {
     const now = Math.floor(Date.now() / 1000);
     for (const m of this.registry.all()) {
       if (m.status === "open" && now > m.spec.settleAfterTs) {
-        const st = this.fixtures.get(m.spec.fixtureId);
-        if (st?.phase !== undefined && TERMINAL_PHASES.has(st.phase)) {
+        const st = this.fixtures.get(m.spec.fixtureId) ?? {};
+        if (st.phase === undefined || (!TERMINAL_PHASES.has(st.phase) && !VOID_PHASES.has(st.phase))) {
+          // The stream can miss the final whistle (restart, dropped SSE) and
+          // then the market sits "open" forever with winners unpaid. Past the
+          // scheduled end, ask the REST snapshot where the fixture really is.
+          const snap = await this.snapshotState(m.spec.fixtureId);
+          if (snap.phase !== undefined) st.phase = snap.phase;
+          if (st.lastSeq === undefined && snap.seq !== undefined) st.lastSeq = snap.seq;
+          this.fixtures.set(m.spec.fixtureId, st);
+        }
+        if (st.phase !== undefined && TERMINAL_PHASES.has(st.phase)) {
           await this.settleAll(m.spec.fixtureId);
+        } else if (st.phase !== undefined && VOID_PHASES.has(st.phase)) {
+          this.registry.markVoidPending(m.spec.marketId);
         }
       }
       if ((m.status === "void-pending" || m.status === "open") && now > m.spec.voidAfterTs) {
@@ -122,6 +133,28 @@ export class Keeper {
           console.error(`[keeper] void failed ${m.spec.marketId}: ${e.message}`);
         }
       }
+    }
+  }
+
+  /** Phase + latest seq for a fixture from the REST snapshot, shape-tolerant. */
+  private async snapshotState(fixtureId: number): Promise<{ phase?: number; seq?: number }> {
+    try {
+      const snap: any = await this.txline.scoresSnapshot(fixtureId);
+      const out: { phase?: number; seq?: number } = {};
+      for (const o of [snap, snap?.data, snap?.summary, snap?.snapshot]) {
+        if (!o || typeof o !== "object") continue;
+        const ph = o.phase ?? o.gamePhase ?? o.phaseId;
+        if (out.phase === undefined && typeof ph === "number") out.phase = ph;
+        const sq = o.seq ?? o.sequence ?? o.lastSeq ?? o.latestSeq;
+        if (out.seq === undefined && typeof sq === "number") out.seq = sq;
+      }
+      if (out.phase !== undefined) {
+        console.log(`[keeper] snapshot fallback: fixture ${fixtureId} phase=${out.phase} seq=${out.seq ?? "?"}`);
+      }
+      return out;
+    } catch (e: any) {
+      console.warn(`[keeper] snapshot fallback failed for ${fixtureId}: ${e.message}`);
+      return {};
     }
   }
 }

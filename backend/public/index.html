@@ -18,9 +18,10 @@ body::before{content:"";position:fixed;inset:-30%;z-index:-2;pointer-events:none
 @keyframes drift{50%{transform:translate(3%,-2%) scale(1.05)}100%{transform:translate(-2%,3%) scale(1.02)}}
 a{color:var(--violet);text-decoration:none}
 button{font-family:inherit;cursor:pointer;border:none}
+button:active{transform:scale(.97)}
 .wrap{max-width:640px;margin:0 auto;padding:0 14px 90px;position:relative;z-index:1}
 header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.bar{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px}
+.bar{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:8px;padding:12px 14px;flex-wrap:wrap}
 .logo{font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:.6px}.logo b{color:var(--violet)}
 .pill{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
 .pill.replay{color:var(--gold);border-color:var(--gold)}
@@ -28,13 +29,18 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .btn{border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px}
 .btn-v{background:linear-gradient(120deg,var(--violet),#5a3fd6);color:#fff;box-shadow:0 4px 18px rgba(124,92,255,.35)}
 .btn-g{background:transparent;color:var(--mut);border:1px solid var(--line)}
+.btn.icon{padding:8px 10px;font-size:15px;line-height:1}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+.holdpill{background:rgba(52,226,122,.08);border:1px solid rgba(52,226,122,.35);color:var(--live);
+ border-radius:10px;padding:8px 12px;font-family:var(--mono);font-size:12px;font-weight:700}
 /* hero */
 .hero{margin:18px 0 6px;padding:26px 22px;border:1px solid var(--line);border-radius:20px;position:relative;overflow:hidden;
  background:linear-gradient(150deg,#0B0B10,#0D0D16 60%,#101020)}
 .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% -20%,rgba(124,92,255,.28),transparent 55%),radial-gradient(circle at -10% 120%,rgba(26,115,232,.2),transparent 50%);pointer-events:none}
 .hero h1{font-family:var(--disp);font-size:24px;line-height:1.2;position:relative}
-.hero h1 b{color:var(--violet)}
+.hero h1 b{background:linear-gradient(90deg,var(--violet),#c9b8ff 45%,var(--violet));background-size:200% 100%;
+ -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:sheen 5s linear infinite}
+@keyframes sheen{to{background-position:200% 0}}
 .hero p{color:var(--mut);font-size:13px;margin-top:8px;max-width:46ch;position:relative;line-height:1.6}
 .hstats{display:flex;gap:8px;margin-top:16px;position:relative}
 .hs{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
@@ -43,22 +49,44 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .hint{background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.35);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--mut);margin:12px 0}
 .hint b{color:var(--txt)}
 .tabs{display:flex;gap:8px;padding:14px 0 4px}
-.tab{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:12px;padding:10px;font-weight:700;font-size:13px}
+.tab{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:12px;padding:10px;font-weight:700;font-size:13px;position:relative;transition:color .2s,border-color .2s}
 .tab.on{background:var(--panel2);color:var(--txt);border-color:#3A3A52}
+.tab.on::after{content:"";position:absolute;left:25%;right:25%;bottom:-1px;height:2px;border-radius:2px;
+ background:linear-gradient(90deg,transparent,var(--violet),transparent);animation:tabin .3s ease-out}
+@keyframes tabin{0%{left:50%;right:50%}}
 /* fixture card */
 .fx{background:linear-gradient(160deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:18px;padding:16px;margin:14px 0;animation:rise .4s ease-out}
 @keyframes rise{0%{transform:translateY(10px);opacity:0}}
-@media(prefers-reduced-motion:reduce){.fx,body::before{animation:none}}
+.fx.goal{animation:goalflash 1.6s ease-out}
+@keyframes goalflash{0%{box-shadow:0 0 0 3px var(--live),0 0 60px rgba(52,226,122,.55);border-color:var(--live)}
+ 100%{box-shadow:0 0 0 0 transparent}}
+@media(prefers-reduced-motion:reduce){.fx,body::before,.hero h1 b,.tab.on::after{animation:none}}
 .mhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .team{flex:1;text-align:center;font-weight:700;font-size:15px;line-height:1.25}
+.tbadge{display:block;margin:0 auto 6px;height:40px}
+.tflag{font-size:34px;line-height:40px;display:inline-block;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+.tmono{display:inline-flex;width:40px;height:40px;border-radius:12px;background:linear-gradient(140deg,#26263a,#101014);
+ border:1px solid var(--line);align-items:center;justify-content:center;font-family:var(--disp);font-weight:700;font-size:14px;color:var(--mut)}
 .mid{min-width:110px;text-align:center}
 .score{font-family:var(--disp);font-weight:700;font-size:30px;letter-spacing:2px}
+.score .d{display:inline-block;animation:pop .35s ease-out}
+@keyframes pop{0%{transform:scale(1.6);color:var(--live)}}
 .ko{color:var(--mut);font-size:11px;margin-top:2px}
 .chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:1px;border-radius:5px;padding:2px 8px;margin-bottom:4px}
 .chip.live{background:#e5344a;color:#fff;animation:pulse 1.6s infinite}
 .chip.up{background:var(--panel2);color:var(--mut);border:1px solid var(--line)}
 .chip.ft{background:var(--panel2);color:var(--gold);border:1px solid var(--gold)}
+.chip.win{background:rgba(52,226,122,.15);color:var(--live);border:1px solid rgba(52,226,122,.5)}
+.chip.lost{background:rgba(255,84,112,.12);color:var(--lose);border:1px solid rgba(255,84,112,.45)}
 @keyframes pulse{50%{opacity:.6}}
+/* verified form (from this node's recorded archive — real results only) */
+.forms{display:flex;align-items:center;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.fchips{flex:1;display:flex;gap:4px}.fchips.r{justify-content:flex-end}
+.flab{font-size:9px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;white-space:nowrap}
+.fchip{display:inline-flex;width:20px;height:20px;border-radius:6px;font-size:10px;font-weight:800;align-items:center;justify-content:center;cursor:default}
+.fchip.W{background:rgba(52,226,122,.15);color:var(--live);border:1px solid rgba(52,226,122,.4)}
+.fchip.D{background:rgba(245,196,83,.12);color:var(--gold);border:1px solid rgba(245,196,83,.35)}
+.fchip.L{background:rgba(255,84,112,.12);color:var(--lose);border:1px solid rgba(255,84,112,.35)}
 .whot{font-size:11px;font-weight:700;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
 .rings{display:flex;justify-content:space-around;margin-top:10px}
 .ring{text-align:center}
@@ -69,16 +97,37 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .mk .q{font-weight:600;font-size:13px}
 .mk .meta{color:var(--mut);font-family:var(--mono);font-size:11px;margin-top:4px}
 .sides{display:flex;gap:8px;margin-top:10px}
-.side{flex:1;border-radius:10px;padding:9px;text-align:center;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--txt)}
-.side:hover{border-color:var(--violet)}
+.side{flex:1;border-radius:10px;padding:9px;text-align:center;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--txt);transition:border-color .15s,transform .15s}
+.side:hover{border-color:var(--violet);transform:translateY(-1px)}
 .side .l{font-size:10px;letter-spacing:1.2px;color:var(--mut)}
 .side .o{font-family:var(--disp);font-weight:700;font-size:18px}
 .side.yes .o{color:var(--live)}.side.no .o{color:var(--lose)}
 .won{font-family:var(--disp);font-weight:700}.won.yes{color:var(--live)}.won.no{color:var(--lose)}
 .rowend{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
-/* sheet + ticket (ported) */
+/* my stakes: holdings + verdict cards */
+.holdcard{display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(52,226,122,.35);
+ background:linear-gradient(140deg,rgba(52,226,122,.07),rgba(26,115,232,.05));border-radius:16px;padding:14px 16px;margin:14px 0}
+.holdcard .k{font-size:10px;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase}
+.holdcard .v{font-family:var(--disp);font-weight:700;font-size:24px;margin-top:2px}
+.holdcard .v .unit{font-size:12px;color:var(--mut)}
+.holdcard .solv{font-family:var(--mono);font-size:12px;color:var(--mut);text-align:right}
+.fx.winbet{border-color:rgba(52,226,122,.55);box-shadow:0 0 26px rgba(52,226,122,.12);position:relative;overflow:hidden}
+.fx.winbet::after{content:"";position:absolute;top:0;bottom:0;width:60px;left:-80px;transform:skewX(-20deg);
+ background:linear-gradient(90deg,transparent,rgba(52,226,122,.14),transparent);animation:sweep 2.8s ease-in-out infinite}
+@keyframes sweep{60%,100%{left:120%}}
+.fx.lostbet{border-color:rgba(255,84,112,.35)}
+.verdict{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.verdict.w{color:var(--live)}.verdict.l{color:var(--lose)}
+.payline{font-family:var(--mono);font-size:12px;color:var(--mut);margin-top:6px;line-height:1.7}
+.payline b{color:var(--txt);font-size:14px}
+.vsline{font-size:12px;color:var(--mut);margin-top:4px}
+.ell::after{content:"...";display:inline-block;width:14px;text-align:left;animation:ell 1.4s steps(4) infinite}
+@keyframes ell{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media(prefers-reduced-motion:reduce){.fx.winbet::after,.score .d,.fx.goal,.ell::after{animation:none}}
+/* sheet + ticket */
 .sheet-back{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:40;display:none}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--panel2);border-radius:20px 20px 0 0;border-top:1px solid var(--line);padding:20px 18px 26px;max-width:640px;margin:0 auto;display:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--panel2);border-radius:20px 20px 0 0;border-top:1px solid var(--line);padding:20px 18px 26px;max-width:640px;margin:0 auto;display:none;animation:up .25s ease-out}
+@keyframes up{0%{transform:translateY(30px);opacity:0}}
 .sheet.open,.sheet-back.open{display:block}
 .sheet h3{font-family:var(--disp);font-size:17px}
 .amt{width:100%;margin-top:14px;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:14px;font-family:var(--disp);font-size:24px;text-align:center}
@@ -93,14 +142,17 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .krow .k{color:var(--mut)}.krow .v{font-family:var(--mono);text-align:right;word-break:break-all}
 .copy{background:none;color:var(--gold);font-family:var(--mono);font-size:11px;border:1px solid rgba(245,196,83,.4);border-radius:6px;padding:2px 6px;margin-left:6px}
 .toasts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,480px)}
-.toast{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px}
+.toast{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;animation:rise .3s ease-out}
 .toast.err{border-left-color:var(--lose)}.toast.ok{border-left-color:var(--live)}
 .empty{color:var(--mut);text-align:center;padding:46px 20px;line-height:1.8}
 .skel{height:130px;border-radius:18px;margin:14px 0;background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);background-size:200% 100%;animation:sh 1.2s infinite}
 @keyframes sh{to{background-position:-200% 0}}
-.arch{border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0;background:var(--panel);display:flex;justify-content:space-between;align-items:center}
-.arch .s{font-family:var(--disp);font-weight:700;font-size:20px}
+.arch{border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0;background:var(--panel);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.arch .s{font-family:var(--disp);font-weight:700;font-size:20px;white-space:nowrap}
 .arch .m{color:var(--mut);font-size:11px;font-family:var(--mono)}
+.confetti{position:fixed;inset:0;z-index:70;pointer-events:none}
+.sechead{font-size:11px;font-weight:700;letter-spacing:1.4px;color:var(--mut);text-transform:uppercase;margin:22px 0 2px;display:flex;align-items:center;gap:8px}
+.sechead::after{content:"";flex:1;height:1px;background:var(--line)}
 :focus-visible{outline:2px solid var(--violet);outline-offset:2px}
 </style>
 </head>
@@ -110,6 +162,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   <span class="pill" id="netPill">…</span>
   <span class="pill replay" id="replayPill" hidden>DEMO REPLAY</span>
   <span class="spacer"></span>
+  <button class="holdpill" id="holdPill" hidden title="Your wallet holdings — tap for My stakes"></button>
+  <button class="btn btn-g icon" id="sndBtn" aria-label="Toggle sound">🔊</button>
   <button class="btn btn-g" id="faucetBtn" hidden>Get test USDC</button>
   <button class="btn btn-v" id="walletBtn">Connect wallet</button>
 </div></header>
@@ -146,7 +200,147 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
 const FEE=0.01, TERMINAL=[5,10,13];
-let markets=[],archive=[],health=null,tab="matches",wallet=null,positions=[],live={},web3=null;
+let markets=[],archive=[],upcoming=[],health=null,tab="matches",wallet=null,positions=[],holdings=null,live={},web3=null,goalFx=null;
+
+/* ================= sound: everything synthesized in-browser =================
+   No audio files, no CDN samples — a procedural far-crowd ambience (filtered
+   brown noise with slow swells) plus tiny synth cues for taps, goals, stakes,
+   claims and wins. Unique to this app by construction. */
+const SFX={ctx:null,master:null,amb:null,on:localStorage.getItem("pv-sound")!=="off"};
+function actx(){
+  if(!SFX.ctx){SFX.ctx=new (window.AudioContext||window.webkitAudioContext)();
+    SFX.master=SFX.ctx.createGain();SFX.master.gain.value=.9;SFX.master.connect(SFX.ctx.destination);}
+  if(SFX.ctx.state==="suspended")SFX.ctx.resume();
+  return SFX.ctx;
+}
+function startAmbient(){
+  if(SFX.amb||!SFX.on)return;
+  const ctx=actx(),len=4*ctx.sampleRate,buf=ctx.createBuffer(1,len,ctx.sampleRate),d=buf.getChannelData(0);
+  let last=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;last=(last+.02*w)/1.02;d[i]=last*3.5;}
+  const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type="lowpass";lp.frequency.value=420;lp.Q.value=.4;
+  const g=ctx.createGain();g.gain.value=0;
+  const lfo=ctx.createOscillator(),lg=ctx.createGain();lfo.frequency.value=.06;lg.gain.value=150;
+  lfo.connect(lg).connect(lp.frequency);
+  const lfo2=ctx.createOscillator(),lg2=ctx.createGain();lfo2.frequency.value=.043;lg2.gain.value=.008;
+  lfo2.connect(lg2).connect(g.gain);
+  src.connect(lp).connect(g).connect(SFX.master);
+  g.gain.setTargetAtTime(.022,ctx.currentTime,2.5);
+  src.start();lfo.start();lfo2.start();
+  SFX.amb={src,g,lfo,lfo2};
+}
+function stopAmbient(){
+  if(!SFX.amb)return;const{src,g,lfo,lfo2}=SFX.amb;SFX.amb=null;
+  g.gain.setTargetAtTime(0,actx().currentTime,.4);
+  setTimeout(()=>{try{src.stop();lfo.stop();lfo2.stop();}catch{}},1600);
+}
+function blip(freq,dur,type="sine",vol=.08,when=0,slide){
+  if(!SFX.on)return;
+  try{const ctx=actx(),t=ctx.currentTime+when,o=ctx.createOscillator(),g=ctx.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(slide,t+dur);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.012);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(SFX.master);o.start(t);o.stop(t+dur+.05);}catch{}
+}
+const sfx={
+  tick:()=>blip(1250,.05,"square",.022),
+  stake:()=>{blip(523,.09,"sine",.06);blip(784,.14,"sine",.06,.08);},
+  goal:()=>{blip(392,.18,"sine",.09,0,784);blip(784,.28,"sine",.07,.16,1175);},
+  cash:()=>{blip(988,.08,"triangle",.08);blip(1319,.2,"triangle",.08,.09);},
+  win:()=>{[523,659,784,1046,1319].forEach((f,i)=>blip(f,.34,"triangle",.09,i*.09));blip(2093,.5,"sine",.04,.5);},
+  lose:()=>blip(196,.5,"sine",.05,0,131),
+};
+let gestured=false;
+document.addEventListener("pointerdown",e=>{
+  if(!gestured){gestured=true;if(SFX.on)startAmbient();}
+  if(e.target.closest("button"))sfx.tick();
+},{passive:true});
+$("#sndBtn").textContent=SFX.on?"🔊":"🔇";
+$("#sndBtn").onclick=()=>{
+  SFX.on=!SFX.on;localStorage.setItem("pv-sound",SFX.on?"on":"off");
+  $("#sndBtn").textContent=SFX.on?"🔊":"🔇";
+  if(SFX.on){startAmbient();toast("Sound on — stadium ambience synthesized live in your browser.","ok");}
+  else stopAmbient();
+};
+
+/* ================= confetti (canvas, self-contained) ================= */
+function celebrate(){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const c=document.createElement("canvas");c.className="confetti";document.body.appendChild(c);
+  const x=c.getContext("2d");c.width=innerWidth;c.height=innerHeight;
+  const cols=["#7C5CFF","#34E27A","#F5C453","#FF5470","#1a73e8","#ffffff"];
+  const ps=Array.from({length:160},()=>({x:Math.random()*c.width,y:-20-Math.random()*c.height*.4,
+    r:3+Math.random()*5,c:cols[Math.random()*cols.length|0],vy:2+Math.random()*3.5,vx:-1.5+Math.random()*3,
+    a:Math.random()*Math.PI,va:-.2+Math.random()*.4}));
+  const t0=performance.now();
+  (function f(t){const el=t-t0;x.clearRect(0,0,c.width,c.height);
+    for(const p of ps){p.x+=p.vx;p.y+=p.vy;p.a+=p.va;p.vy+=.02;
+      x.save();x.translate(p.x,p.y);x.rotate(p.a);x.globalAlpha=Math.max(0,1-el/3200);
+      x.fillStyle=p.c;x.fillRect(-p.r,-p.r/2,p.r*2,p.r);x.restore();}
+    if(el<3400)requestAnimationFrame(f);else c.remove();})(t0);
+}
+const celebrated=new Set(JSON.parse(localStorage.getItem("pv-celebrated")||"[]"));
+function markCeleb(k){celebrated.add(k);localStorage.setItem("pv-celebrated",JSON.stringify([...celebrated]));}
+
+/* ================= flags: national teams -> emoji (no image requests) ===== */
+const FLAG_TAG={england:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",scotland:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",wales:"🏴󠁧󠁢󠁷󠁬󠁳󠁿"};
+const ISO={argentina:"AR",brazil:"BR",france:"FR",germany:"DE",spain:"ES",portugal:"PT",netherlands:"NL",holland:"NL",
+belgium:"BE",italy:"IT",croatia:"HR",uruguay:"UY",colombia:"CO",ecuador:"EC",peru:"PE",chile:"CL",paraguay:"PY",
+bolivia:"BO",venezuela:"VE",mexico:"MX",usa:"US","united states":"US",canada:"CA","costa rica":"CR",panama:"PA",
+honduras:"HN",jamaica:"JM",morocco:"MA",senegal:"SN",ghana:"GH",nigeria:"NG",cameroon:"CM",algeria:"DZ",tunisia:"TN",
+egypt:"EG","south africa":"ZA","ivory coast":"CI","cote d'ivoire":"CI","côte d'ivoire":"CI",mali:"ML",
+"burkina faso":"BF","cape verde":"CV","cabo verde":"CV","dr congo":"CD",japan:"JP","south korea":"KR",
+"korea republic":"KR",korea:"KR","saudi arabia":"SA",iran:"IR","ir iran":"IR",qatar:"QA",australia:"AU",
+"new zealand":"NZ",uzbekistan:"UZ",jordan:"JO",iraq:"IQ",uae:"AE","united arab emirates":"AE",china:"CN",india:"IN",
+indonesia:"ID",thailand:"TH",vietnam:"VN",denmark:"DK",sweden:"SE",norway:"NO",finland:"FI",iceland:"IS",
+switzerland:"CH",austria:"AT",poland:"PL","czech republic":"CZ",czechia:"CZ",slovakia:"SK",slovenia:"SI",serbia:"RS",
+"bosnia and herzegovina":"BA",albania:"AL","north macedonia":"MK",montenegro:"ME",kosovo:"XK",greece:"GR",turkey:"TR",
+"türkiye":"TR",turkiye:"TR",ukraine:"UA",russia:"RU",romania:"RO",bulgaria:"BG",hungary:"HU",ireland:"IE",
+"republic of ireland":"IE",georgia:"GE",armenia:"AM",azerbaijan:"AZ",kazakhstan:"KZ",israel:"IL",estonia:"EE",
+latvia:"LV",lithuania:"LT",belarus:"BY",moldova:"MD",luxembourg:"LU",malta:"MT",cyprus:"CY",
+"trinidad and tobago":"TT","el salvador":"SV",guatemala:"GT",cuba:"CU",haiti:"HT","dominican republic":"DO",
+curacao:"CW","curaçao":"CW",suriname:"SR","new caledonia":"NC"};
+const isoFlag=cc=>String.fromCodePoint(...[...cc.toUpperCase()].map(c=>127397+c.charCodeAt(0)));
+function flagOf(name,code){
+  if(code&&/^[A-Za-z]{2}$/.test(code))return isoFlag(code);
+  const n=String(name||"").trim().toLowerCase();
+  if(FLAG_TAG[n])return FLAG_TAG[n];
+  if(ISO[n])return isoFlag(ISO[n]);
+  return null;
+}
+function badge(name,code){
+  const fl=flagOf(name,code);
+  if(fl)return `<span class="tbadge"><span class="tflag" role="img" aria-label="${esc(name)} flag">${fl}</span></span>`;
+  const ini=String(name||"?").replace(/[^A-Za-z0-9 ]/g," ").trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?";
+  return `<span class="tbadge"><span class="tmono">${esc(ini)}</span></span>`;
+}
+const inlineFlag=(name,code)=>{const f=flagOf(name,code);return f?f+" ":"";};
+
+/* ============ previous matches: from THIS NODE's verified archive ============
+   The TxLINE score feed carries no team history, so form is computed from
+   matches this node actually recorded and can prove — nothing is invented. */
+function formFor(name){
+  if(!name||/^tbd/i.test(name))return[];
+  const n=name.toLowerCase(),rows=[];
+  for(const r of archive){
+    const fx=r.fixture||{};
+    const h=(fx.name1||"").toLowerCase(),a=(fx.name2||"").toLowerCase();
+    if(h!==n&&a!==n)continue;
+    if(r.h==null||r.a==null)continue;
+    const mine=h===n?r.h:r.a,opp=h===n?r.a:r.h;
+    rows.push({res:mine>opp?"W":mine<opp?"L":"D",score:`${r.h}:${r.a}`,
+      vs:h===n?(fx.name2||"?"):(fx.name1||"?"),endedAt:r.endedAt||0});
+  }
+  return rows.sort((x,y)=>y.endedAt-x.endedAt).slice(0,5);
+}
+function formRow(n1,n2){
+  const c1=formFor(n1),c2=formFor(n2);
+  if(!c1.length&&!c2.length)return"";
+  const chips=cs=>cs.map(c=>`<span class="fchip ${c.res}" title="${esc(c.vs)} · final ${c.score}">${c.res}</span>`).join("");
+  return `<div class="forms"><div class="fchips">${chips(c1)}</div>
+    <div class="flab">verified form</div>
+    <div class="fchips r">${chips(c2)}</div></div>`;
+}
 
 init();
 async function init(){
@@ -161,18 +355,52 @@ async function init(){
 async function refresh(){
   try{markets=await getJ("/markets");}catch{}
   try{archive=await getJ("/archive");}catch{}
-  if(wallet){try{positions=await getJ("/positions/"+wallet);}catch{}}
-  $("#hMkts").textContent=markets.length;
-  $("#hSet").textContent=markets.filter(m=>m.status==="settled").length;
+  try{upcoming=await getJ("/fixtures");}catch{}
+  if(wallet){
+    try{positions=await getJ("/positions/"+wallet);}catch{}
+    try{holdings=await getJ("/balance/"+wallet);}catch{}
+  }
+  countUp($("#hMkts"),markets.length);
+  countUp($("#hSet"),markets.filter(m=>m.status==="settled").length);
+  updateHoldPill();
+  detectSettlements();
   render();
 }
+function countUp(el,to){
+  const from=Number(el.textContent)||0;if(from===to){el.textContent=to;return;}
+  const t0=performance.now();
+  (function s(t){const p=Math.min(1,(t-t0)/600);el.textContent=Math.round(from+(to-from)*p);
+    if(p<1)requestAnimationFrame(s);})(t0);
+}
+function updateHoldPill(){
+  const p=$("#holdPill");
+  if(!wallet||!holdings){p.hidden=true;return;}
+  p.hidden=false;p.textContent=`${fmt(holdings.usdc)} USDC`;
+}
+$("#holdPill").onclick=()=>{switchTab("mine");};
 
-/* wallet + faucet (ported) */
+/* Fire once per settled bet: confetti + fanfare on wins, honest note on losses. */
+function detectSettlements(){
+  if(!wallet)return;
+  for(const r of positions){
+    if(r.status!=="settled")continue;
+    const k=wallet+":"+r.marketId;
+    if(celebrated.has(k))continue;
+    markCeleb(k);
+    const wonAmt=r.outcome==="YES"?r.yes:r.no;
+    if(wonAmt>0){celebrate();sfx.win();
+      toast(`🏆 <b>You won:</b> ${esc(r.question)} — payout ready in <b>My stakes</b>.`,"ok");
+    }else{sfx.lose();
+      toast(`Settled: ${esc(r.question)} — this one didn't land.`,"");}
+  }
+}
+
+/* wallet + faucet */
 $("#walletBtn").onclick=async()=>{
   const ph=window?.phantom?.solana;
   if(!ph){window.open("https://phantom.app","_blank");return;}
-  if(wallet){await ph.disconnect().catch(()=>{});wallet=null;positions=[];
-    $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;render();return;}
+  if(wallet){await ph.disconnect().catch(()=>{});wallet=null;positions=[];holdings=null;
+    $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;updateHoldPill();render();return;}
   try{const r=await ph.connect();wallet=r.publicKey.toString();
     $("#walletBtn").textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
     $("#faucetBtn").hidden=health?.network!=="devnet";
@@ -182,7 +410,9 @@ $("#walletBtn").onclick=async()=>{
 $("#faucetBtn").onclick=async()=>{
   if(!wallet)return;$("#faucetBtn").disabled=true;$("#faucetBtn").textContent="Minting…";
   try{const r=await postJ("/faucet",{address:wallet});
+    sfx.cash();
     toast(`100 test USDC sent. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${r.tx}?cluster=devnet">View tx</a>`,"ok");
+    setTimeout(refresh,2000);
   }catch(e){toast("Faucet: "+e.message,"err");}
   $("#faucetBtn").disabled=false;$("#faucetBtn").textContent="Get test USDC";
 };
@@ -193,49 +423,67 @@ async function signAndSend(b64){
   return signature;
 }
 
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;
-  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));render();});
+function switchTab(t){
+  tab=t;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.tab===t));
+  render();
+}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
 function render(){
   const v=$("#view");
   if(tab==="mine"){v.innerHTML=renderMine();bind();return;}
   if(tab==="archive"){v.innerHTML=renderArchive();return;}
   v.innerHTML=renderMatches();bind();
+  if(goalFx!=null){
+    const el=document.querySelector(`[data-fxid="${goalFx}"]`);
+    if(el)el.classList.add("goal");
+    goalFx=null;
+  }
 }
 
-/* ---- matches: group markets by fixture ---- */
+/* ---- matches: markets grouped by fixture + full upcoming slate ---- */
 function ring(p,color,glyph){const r=21,c=2*Math.PI*r,off=c*(1-Math.max(0,Math.min(1,p)));
  return `<svg width="54" height="54"><circle cx="27" cy="27" r="${r}" fill="none" stroke="#232330" stroke-width="5"/>
  <circle cx="27" cy="27" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"
  stroke-dasharray="${c}" stroke-dashoffset="${off}" style="transition:stroke-dashoffset .8s ease;filter:drop-shadow(0 0 4px ${color})"/>
  <text x="27" y="32" text-anchor="middle" transform="rotate(90 27 27)" fill="${color}" font-size="12" font-weight="800">${glyph}</text></svg>`;}
 
+function scoreHtml(s){
+  return `<div class="score"><span class="d">${s.home??"–"}</span> : <span class="d">${s.away??"–"}</span></div>`;
+}
+function countdown(ko){
+  if(!ko)return"";
+  const d=ko*1000-Date.now();if(d<=0)return"";
+  const days=Math.floor(d/86400000),h=Math.floor(d%86400000/3600000),m=Math.floor(d%3600000/60000);
+  return days>0?`kicks off in ${days}d ${h}h`:h>0?`kicks off in ${h}h ${m}m`:`kicks off in ${m}m`;
+}
+
 function renderMatches(){
-  if(!markets.length) return `<div class="empty"><b style="color:var(--txt)">No markets yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div>`;
   const now=Date.now()/1000;
   const groups=new Map();
   for(const m of markets){const g=groups.get(m.fixtureId)??[];g.push(m);groups.set(m.fixtureId,g);}
-  return [...groups.entries()].map(([f,mks])=>{
+  const cards=[...groups.entries()].map(([f,mks])=>{
     const fx=mks[0].fixture||{};
     const s=live[f]||{};
     const isLive=s.phase!=null&&!TERMINAL.includes(Number(s.phase));
     const isDone=s.phase!=null&&TERMINAL.includes(Number(s.phase));
     const n1=fx.name1??"Home",n2=fx.name2??"Away";
     const untitled=!fx.name1&&!fx.name2;
-    // headline market for the rings: prefer a "beat/win" question
     const head=mks.find(m=>/beat|win/i.test(m.question))??mks[0];
     const p=head?.pools, tot=p?(p.yesPool+p.noPool):0;
     const yes=tot>0?p.yesPool/tot:null;
-    return `<div class="fx">
+    return `<div class="fx" data-fxid="${f}">
       <div class="mhead">
-        <div class="team">${esc(n1)}</div>
+        <div class="team">${badge(n1,fx.code1)}${esc(n1)}</div>
         <div class="mid">
           ${isLive?`<span class="chip live">● LIVE</span>`:isDone?`<span class="chip ft">FULL TIME</span>`:`<span class="chip up">UPCOMING</span>`}
-          <div class="score">${s.home??"–"} : ${s.away??"–"}</div>
+          ${scoreHtml(s)}
           <div class="ko">${untitled?`Fixture #${f}`:""} ${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
         </div>
-        <div class="team">${esc(n2)}</div>
+        <div class="team">${badge(n2,fx.code2)}${esc(n2)}</div>
       </div>
+      ${formRow(fx.name1,fx.name2)}
       <div class="whot">Who will win? · market-implied</div>
       ${yes!=null?`<div class="rings">
         <div class="ring">${ring(yes,"var(--live)","W")}<div class="lab">${esc(n1)} <b>${Math.round(yes*100)}%</b></div></div>
@@ -244,6 +492,28 @@ function renderMatches(){
       ${mks.map(marketRow.bind(null,now)).join("")}
     </div>`;
   }).join("");
+
+  // Full slate: fixtures known to the node that don't have markets yet.
+  const slate=(upcoming||[]).filter(u=>u.fixtureId&&!groups.has(Number(u.fixtureId)))
+    .sort((a,b)=>(a.kickoff??1/0)-(b.kickoff??1/0));
+  const slateHtml=slate.length?`<div class="sechead">Upcoming fixtures</div>`+slate.map(fx=>{
+    const n1=fx.name1??"TBD",n2=fx.name2??"TBD";
+    return `<div class="fx">
+      <div class="mhead">
+        <div class="team">${badge(n1,fx.code1)}${esc(n1)}</div>
+        <div class="mid"><span class="chip up">UPCOMING</span>
+          <div class="score">– : –</div>
+          <div class="ko">${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
+        </div>
+        <div class="team">${badge(n2,fx.code2)}${esc(n2)}</div>
+      </div>
+      ${formRow(fx.name1,fx.name2)}
+      <div class="ko" style="margin-top:10px">${countdown(fx.kickoff)||"Kickoff time to be confirmed"} · markets open before kickoff</div>
+    </div>`;}).join(""):"";
+
+  if(!cards&&!slateHtml)
+    return `<div class="empty"><b style="color:var(--txt)">No markets yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div>`;
+  return cards+slateHtml;
 }
 
 function marketRow(now,m){
@@ -268,25 +538,59 @@ function marketRow(now,m){
   return `<div class="mk"><div class="q">${esc(m.question)}</div>${body}</div>`;
 }
 
-/* ---- my stakes (ported) ---- */
+/* ---- my stakes: holdings + clear WON/LOST verdicts ---- */
 function renderMine(){
   if(!wallet)return `<div class="empty">Connect your wallet to see stakes, claim wins, and collect refunds.</div>`;
-  if(!positions.length)return `<div class="empty">No stakes yet — pick a market and back your call.</div>`;
-  return positions.map(r=>{
-    const p=r.pools||{yesPool:0,noPool:0};let line="",act="";
-    if(r.status==="open"||r.status==="void-pending"){line=`Staked — YES ${fmt(r.yes)} / NO ${fmt(r.no)} USDC`;}
-    else if(r.status==="voided"){line=`Refund available: ${fmt(r.yes+r.no)} USDC`;
-      act=r.claimed?`<span class="pill">Refunded</span>`:`<button class="btn btn-v" data-claim="${r.marketId}">Collect refund</button>`;}
-    else if(r.status==="settled"){
-      const won=r.outcome==="YES"?r.yes:r.no;
-      if(won>0){const wp=r.outcome==="YES"?p.yesPool:p.noPool,lp=r.outcome==="YES"?p.noPool:p.yesPool;
-        const w=wp>0?won*lp/wp:0;const pay=won+w-w*FEE;
-        line=`${r.outcome} won — payout ${fmt(pay)} USDC`;
-        act=r.claimed?`<span class="pill">Claimed</span>`:`<button class="btn btn-v" data-claim="${r.marketId}">Claim payout</button>`;
-      }else line=`${r.outcome} won — this one didn't land (staked ${fmt(r.yes+r.no)}).`;
+  const hold=holdings?`<div class="holdcard">
+    <div><div class="k">Wallet holdings</div><div class="v">${fmt(holdings.usdc)} <span class="unit">USDC</span></div></div>
+    <div class="solv">◎ ${fmt(holdings.sol)} SOL<br>${wallet.slice(0,4)}…${wallet.slice(-4)}</div>
+  </div>`:"";
+  if(!positions.length)return hold+`<div class="empty">No stakes yet — pick a market and back your call.</div>`;
+  const now=Date.now()/1000;
+  return hold+positions.map(r=>{
+    const p=r.pools||{yesPool:0,noPool:0};
+    const fx=r.fixture||{};
+    const vs=fx.name1?`<div class="vsline">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1)} vs ${esc(fx.name2||"?")} ${inlineFlag(fx.name2,fx.code2)}</div>`:"";
+    const s=live[r.fixtureId]||{};
+    const ftNow=(s.phase!=null&&TERMINAL.includes(Number(s.phase)))||(r.settleAfterTs&&now>r.settleAfterTs);
+    let cls="",top="",line="",act="";
+    if(r.status==="settled"){
+      const wonAmt=r.outcome==="YES"?r.yes:r.no;
+      if(wonAmt>0){
+        const wp=r.outcome==="YES"?p.yesPool:p.noPool,lp=r.outcome==="YES"?p.noPool:p.yesPool;
+        const w=wp>0?wonAmt*lp/wp:0;const pay=wonAmt+w-w*FEE;
+        cls="winbet";
+        top=`<div class="verdict w">🏆 YOU WON THIS BET</div>`;
+        line=`<div class="payline">Outcome: <b>${r.outcome}</b> · your stake ${fmt(wonAmt)} USDC<br>Payout: <b>${fmt(pay)} USDC</b>${r.claimed?" — paid to your wallet":""}</div>`;
+        act=r.claimed
+          ?`<span class="chip win">CLAIMED ✓</span><button class="btn btn-g" data-receipt="${r.marketId}">Receipt</button>`
+          :`<button class="btn btn-v" data-claim="${r.marketId}">Claim payout</button><button class="btn btn-g" data-receipt="${r.marketId}">Receipt</button>`;
+      }else{
+        cls="lostbet";
+        top=`<div class="verdict l">YOU LOST THIS BET</div>`;
+        line=`<div class="payline">Outcome: <b>${r.outcome}</b> · you backed the other side (staked ${fmt(r.yes+r.no)} USDC)</div>`;
+        act=`<button class="btn btn-g" data-receipt="${r.marketId}">Receipt</button>`;
+      }
+    }else if(r.status==="voided"){
+      top=`<div class="verdict">MATCH VOIDED</div>`;
+      line=`<div class="payline">Refund available: <b>${fmt(r.yes+r.no)} USDC</b></div>`;
+      act=r.claimed?`<span class="pill">Refunded</span>`:`<button class="btn btn-v" data-claim="${r.marketId}">Collect refund</button>`;
+    }else if(ftNow){
+      top=`<span class="chip ft">FULL TIME</span>`;
+      line=`<div class="payline">Settling by cryptographic proof<span class="ell"></span><br>Your result appears here automatically — no action needed.</div>`;
+    }else if(r.lockTs&&now>=r.lockTs){
+      top=`<span class="chip live">● LIVE</span>`;
+      line=`<div class="payline">Staked — YES ${fmt(r.yes)} / NO ${fmt(r.no)} USDC · locked until full time</div>`;
+    }else{
+      top=`<span class="chip up">OPEN</span>`;
+      line=`<div class="payline">Staked — YES ${fmt(r.yes)} / NO ${fmt(r.no)} USDC · locks at kickoff</div>`;
     }
-    return `<div class="fx"><div class="q" style="font-weight:700">${esc(r.question)}</div>
-      <div class="rowend"><span class="meta" style="color:var(--mut)">${line}</span>${act}</div></div>`;
+    return `<div class="fx ${cls}">
+      ${top}
+      <div class="q" style="font-weight:700;margin-top:6px">${esc(r.question)}</div>
+      ${vs}${line}
+      <div class="rowend"><span></span><span style="display:flex;gap:8px">${act}</span></div>
+    </div>`;
   }).join("");
 }
 
@@ -298,13 +602,13 @@ function renderArchive(){
   return `<div class="hint"><b>Verified archive.</b> Final scores as recorded live from the TxLINE feed by this node.</div>`+
     archive.map(r=>{const fx=r.fixture||{};
     return `<div class="arch">
-      <div><div style="font-weight:700">${esc(fx.name1??"Fixture")} vs ${esc(fx.name2??("#"+r.fixtureId))}</div>
+      <div><div style="font-weight:700">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1??"Fixture")} vs ${esc(fx.name2??("#"+r.fixtureId))} ${inlineFlag(fx.name2,fx.code2)}</div>
       <div class="m">${r.endedAt?new Date(r.endedAt).toLocaleString():""} · fx${r.fixtureId}</div></div>
       <div class="s">${r.h??"?"} : ${r.a??"?"}</div>
     </div>`;}).join("");
 }
 
-/* ---- stake sheet / claim / receipt (ported) ---- */
+/* ---- stake sheet / claim / receipt ---- */
 function bind(){
   document.querySelectorAll("[data-stake]").forEach(b=>b.onclick=()=>{const [id,y]=b.dataset.stake.split("|");openSheet(Number(id),y==="1");});
   document.querySelectorAll("[data-receipt]").forEach(b=>b.onclick=()=>openReceipt(Number(b.dataset.receipt)));
@@ -336,6 +640,7 @@ function openSheet(marketId,sideYes){
     $("#confirmBtn").disabled=true;$("#confirmBtn").textContent="Waiting for wallet…";
     try{const {tx}=await postJ("/tx/stake",{address:wallet,marketId,sideYes,amount:a});
       const sig=await signAndSend(tx);
+      sfx.stake();
       toast(`Stake placed. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
       closeSheet();setTimeout(refresh,2500);
     }catch(e){toast("Stake failed: "+(e.message||"wallet rejected"),"err");
@@ -346,6 +651,7 @@ async function claim(marketId,btn){
   btn.disabled=true;btn.textContent="Waiting for wallet…";
   try{const {tx}=await postJ("/tx/claim",{address:wallet,marketId});
     const sig=await signAndSend(tx);
+    sfx.cash();
     toast(`Paid out. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
     setTimeout(refresh,2500);
   }catch(e){toast("Claim failed: "+(e.message||"wallet rejected"),"err");btn.disabled=false;btn.textContent="Claim payout";}
@@ -378,9 +684,18 @@ function startSSE(){
   es.addEventListener("score",ev=>{let e;try{e=JSON.parse(ev.data);}catch{return;}
     const d=e.data??{};const f=d.fixtureId??d.fixture_id??d.fixture?.id;if(!f)return;
     const s=live[f]??(live[f]={});
+    const prevH=s.home,prevA=s.away,prevPhase=s.phase;
     const h=d.homeScore??d.home_score??d.score?.home;const a=d.awayScore??d.away_score??d.score?.away;
     if(h!=null)s.home=h;if(a!=null)s.away=a;
     const ph=d.phase??d.gamePhase??d.phaseId;if(ph!=null)s.phase=ph;
+    // goal: score moved after we already had one — flash the card + crowd cue
+    if((prevH!=null||prevA!=null)&&((h!=null&&h!==prevH)||(a!=null&&a!==prevA))){
+      sfx.goal();goalFx=f;
+      const fx=(markets.find(m=>m.fixtureId===f)||{}).fixture||{};
+      toast(`⚽ <b>GOAL</b> — ${esc(fx.name1??"Home")} ${s.home??"?"} : ${s.away??"?"} ${esc(fx.name2??"Away")}`,"ok");
+    }
+    // final whistle: pull positions so "settling…" appears immediately
+    if(ph!=null&&TERMINAL.includes(Number(ph))&&prevPhase!==ph&&wallet)setTimeout(refresh,1500);
     if(tab==="matches")render();});
 }
 

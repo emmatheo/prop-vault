@@ -24,6 +24,7 @@ import { makeStream, ScoreEvent } from "./txline/stream.js";
 import { VaultClient } from "./solana/vault.js";
 import { Keeper } from "./keeper.js";
 import { MarketRegistry, homeWinProp, teamCornersOverProp, totalGoalsOverProp } from "./markets.js";
+import { probeFixtureFeed } from "./fixtures.js";
 
 async function main() {
   const txline = await new TxlineClient().init();
@@ -41,6 +42,22 @@ async function main() {
     console.log(`[fixtures] loaded ${fixtureMeta.size} fixture(s) from upcoming.json`);
   } catch { console.log("[fixtures] no upcoming.json (optional)"); }
   const meta = (f: number) => fixtureMeta.get(f) ?? null;
+
+  // If TxLINE's API exposes a fixtures listing (team names, kickoffs, country
+  // codes), merge it over the hand-edited file — the feed wins on names since
+  // upcoming.json ships with TBD placeholders. /health reports which source won.
+  let fixtureSource = "upcoming.json";
+  const stripUndef = (o: any) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+  const enrichFixtures = async () => {
+    const found = await probeFixtureFeed(txline).catch(() => null);
+    if (!found) return;
+    fixtureSource = `txline ${found.source}`;
+    for (const row of found.rows) {
+      fixtureMeta.set(row.fixtureId, { ...fixtureMeta.get(row.fixtureId), ...stripUndef(row) });
+    }
+  };
+  void enrichFixtures();
+  setInterval(() => void enrichFixtures(), 6 * 3600_000);
   const stream = makeStream(txline);
   const keeper = vault ? new Keeper(stream, txline, vault, registry) : null;
 
@@ -61,7 +78,30 @@ async function main() {
     stream: streamStatus,
     network: CFG.network,
     markets: registry.all().length,
+    fixtureSource,
   }));
+
+  // Every known fixture (with or without markets) so the UI shows the slate.
+  app.get("/fixtures", (_req, res) => res.json([...fixtureMeta.values()]));
+
+  // Wallet holdings: SOL + USDC, so users watch the payout actually land.
+  app.get("/balance/:address", async (req, res) => {
+    try {
+      const { PublicKey, Connection } = await import("@solana/web3.js");
+      const spl = await import("@solana/spl-token");
+      const owner = new PublicKey(req.params.address);
+      const conn = vault ? vault.provider.connection : new Connection(CFG.solana.rpcUrl, "confirmed");
+      const sol = (await conn.getBalance(owner)) / 1e9;
+      let usdc = 0;
+      if (CFG.solana.usdcMint) {
+        try {
+          const ata = spl.getAssociatedTokenAddressSync(new PublicKey(CFG.solana.usdcMint), owner);
+          usdc = Number((await conn.getTokenAccountBalance(ata)).value.uiAmount ?? 0);
+        } catch { /* no USDC account yet = 0 */ }
+      }
+      res.json({ sol, usdc });
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
 
   // On-chain pool cache: avoids hammering the RPC on every page load.
   const poolCache = new Map<number, { data: any; ts: number }>();
@@ -130,10 +170,14 @@ async function main() {
         const p = await pools(m.spec.marketId);
         rows.push({
           marketId: m.spec.marketId,
+          fixtureId: m.spec.fixtureId,
           question: m.spec.question,
           status: m.status,
           outcome: m.receipt ? (m.receipt.outcomeYes ? "YES" : "NO") : null,
           yes: pos.yes, no: pos.no, claimed: pos.claimed, pools: p,
+          lockTs: m.spec.lockTs,
+          settleAfterTs: m.spec.settleAfterTs,
+          fixture: meta(m.spec.fixtureId),
         });
       }
       res.json(rows);
