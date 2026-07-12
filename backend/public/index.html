@@ -211,6 +211,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
+const BUILD="2026-07-12.4"; // shown in diagnostics; bump when the frontend changes
+console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
 const FEE=0.01, TERMINAL=[5,10,13];
@@ -475,7 +477,7 @@ function detectWallets(){
 }
 let lastWalletError=null;
 const withTimeout=(p,ms)=>Promise.race([p,
-  new Promise((_,rej)=>setTimeout(()=>rej(new Error("wallet didn't respond — open the wallet extension, unlock it, then try again")),ms))]);
+  new Promise((_,rej)=>setTimeout(()=>rej(new Error("no response after "+Math.round(ms/1000)+"s — the wallet never showed its popup. It is probably locked (click its toolbar icon and unlock), or this provider is a dead stub from another extension")),ms))]);
 function setDisconnected(){
   wallet=null;walletProvider=null;walletName=null;positions=[];holdings=null;
   $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;
@@ -483,15 +485,15 @@ function setDisconnected(){
 }
 async function connectTo(w){
   closeSheet();
-  const btn=$("#walletBtn");btn.disabled=true;btn.textContent="Connecting…";
+  const btn=$("#walletBtn");btn.disabled=true;btn.textContent=`Connecting ${w.name}…`;
   try{
     if(w.std){
-      const res=await withTimeout(w.std.features["standard:connect"].connect(),60000);
+      const res=await withTimeout(w.std.features["standard:connect"].connect(),25000);
       const acct=(res.accounts||[]).find(a=>(a.chains||[]).some(c=>String(c).startsWith("solana")))??res.accounts?.[0];
       if(!acct)throw new Error("no Solana account was approved");
       walletProvider={std:w.std,acct};wallet=acct.address;
     }else{
-      const r=await withTimeout(w.p.connect(),60000);
+      const r=await withTimeout(w.p.connect(),25000);
       const pk=r?.publicKey??w.p.publicKey;
       if(!pk)throw new Error("wallet returned no account");
       walletProvider={p:w.p};wallet=pk.toString();
@@ -506,10 +508,12 @@ async function connectTo(w){
     lastWalletError=`${w.name}: ${e?.message||e?.code||"unknown error"}`;
     console.error("[wallet] connect failed:",e);
     const rejected=e?.code===4001||/reject|cancell?ed|denied/i.test(String(e?.message||""));
-    toast(rejected
-      ?"Connection request was rejected in the wallet — click Connect and approve it this time."
-      :"Couldn't connect"+(e?.message?": "+esc(e.message):".")+` <a href="#" id="diagLink">Run wallet diagnostics</a>`,"err");
-    setTimeout(()=>{const l=$("#diagLink");if(l)l.onclick=ev=>{ev.preventDefault();openDiag();};},0);
+    if(rejected){
+      toast("Connection request was rejected in the wallet — click Connect and approve it this time.","err");
+    }else{
+      toast(`${esc(w.name)} didn't connect — opening diagnostics.`,"err");
+      openDiag(); // show the raw error + environment right away instead of a dead end
+    }
   }
   btn.disabled=false;
 }
@@ -545,6 +549,7 @@ function openDiag(){
   $("#sheet").innerHTML=`<h3>Wallet diagnostics</h3>
     <div class="ticket" style="border-color:var(--line)">
       <div class="head"><span class="t" style="color:var(--txt)">THIS PAGE</span></div>
+      <div class="krow"><span class="k">Frontend build</span><span class="v">${esc(BUILD)}</span></div>
       <div class="krow"><span class="k">Origin</span><span class="v">${esc(location.origin)}</span></div>
       <div class="krow"><span class="k">Wallets detected</span><span class="v">${ws.length?ws.map(w=>esc(w.name)).join(", "):"none"}</span></div>
       ${probes.map(([k,v])=>`<div class="krow"><span class="k">${esc(k)}</span><span class="v">${v===true?"yes":v===false||v===undefined?"no":esc(String(v))}</span></div>`).join("")}
@@ -567,26 +572,41 @@ function openDiag(){
 }
 function openWalletPicker(ws){
   $("#sheet").innerHTML=`<h3>Choose a wallet</h3>
-    <div class="note">These Solana wallets were detected in your browser.</div>
+    <div class="note">Detected in this browser — tap one to connect. If yours is missing, it isn't visible to this page (locked, disabled, or a normal mobile tab).</div>
     ${ws.map((w,i)=>`<button class="wopt" data-wallet="${i}">
-      <span class="wic">👛</span><span>${esc(w.name)}<span class="wd">Detected — tap to connect</span></span>
+      <span class="wic">👛</span><span>${esc(w.name)}<span class="wd">${w.std?"via Wallet Standard":"injected provider"}</span></span>
     </button>`).join("")}
-    <div class="sides" style="margin-top:14px"><button class="btn btn-g side" id="cancelBtn">Cancel</button></div>`;
+    <div class="sides" style="margin-top:14px">
+      <button class="btn btn-g side" id="cancelBtn">Cancel</button>
+      <button class="btn btn-g side" id="diagBtn2">Diagnostics</button>
+    </div>`;
   $("#sheet").classList.add("open");$("#sheetBack").classList.add("open");
   $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  $("#diagBtn2").onclick=openDiag;
   document.querySelectorAll("[data-wallet]").forEach(b=>b.onclick=()=>connectTo(ws[Number(b.dataset.wallet)]));
 }
 function openWalletHelp(){
+  const isMobile=/android|iphone|ipad|mobile/i.test(navigator.userAgent);
+  const here=encodeURIComponent(location.href),ref=encodeURIComponent(location.origin);
   $("#sheet").innerHTML=`<h3>No Solana wallet found</h3>
     <div class="note" style="font-size:13px;line-height:1.7;margin-top:10px">
-      Install one of these, then refresh this page. On <b>mobile</b>, wallets can only inject into their own
-      in-app browser — open this site from inside the wallet app.</div>
+      ${isMobile
+        ?`On mobile, wallets can't be seen from a normal browser tab. Use a button below to reopen this
+          exact page <b>inside the wallet's own browser</b> — connect works from there.`
+        :`Install one of these extensions, unlock it, then refresh this page.`}</div>
+    ${isMobile?`
+    <a class="wopt" href="https://phantom.app/ul/browse/${here}?ref=${ref}"><span class="wic">👻</span><span>Open in Phantom<span class="wd">launches the Phantom app browser</span></span></a>
+    <a class="wopt" href="https://solflare.com/ul/v1/browse/${here}?ref=${ref}"><span class="wic">🔆</span><span>Open in Solflare<span class="wd">launches the Solflare app browser</span></span></a>`:`
     <a class="wopt" href="https://phantom.app" target="_blank" rel="noopener"><span class="wic">👻</span><span>Phantom<span class="wd">phantom.app</span></span></a>
     <a class="wopt" href="https://solflare.com" target="_blank" rel="noopener"><span class="wic">🔆</span><span>Solflare<span class="wd">solflare.com</span></span></a>
-    <a class="wopt" href="https://backpack.app" target="_blank" rel="noopener"><span class="wic">🎒</span><span>Backpack<span class="wd">backpack.app</span></span></a>
-    <div class="sides" style="margin-top:14px"><button class="btn btn-g side" id="cancelBtn">Close</button></div>`;
+    <a class="wopt" href="https://backpack.app" target="_blank" rel="noopener"><span class="wic">🎒</span><span>Backpack<span class="wd">backpack.app</span></span></a>`}
+    <div class="sides" style="margin-top:14px">
+      <button class="btn btn-g side" id="cancelBtn">Close</button>
+      <button class="btn btn-g side" id="diagBtn3">Diagnostics</button>
+    </div>`;
   $("#sheet").classList.add("open");$("#sheetBack").classList.add("open");
   $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  $("#diagBtn3").onclick=openDiag;
 }
 $("#walletBtn").onclick=async()=>{
   if(wallet){
@@ -596,8 +616,7 @@ $("#walletBtn").onclick=async()=>{
   }
   const ws=detectWallets();
   if(!ws.length){openWalletHelp();return;}
-  if(ws.length===1)return connectTo(ws[0]);
-  openWalletPicker(ws);
+  openWalletPicker(ws); // always show the picker: you see exactly what was found
 };
 $("#faucetBtn").onclick=async()=>{
   if(!wallet)return;$("#faucetBtn").disabled=true;$("#faucetBtn").textContent="Minting…";

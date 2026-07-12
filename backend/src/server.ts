@@ -68,8 +68,11 @@ async function main() {
   app.use(cors(), express.json());
 
   // Serve the built frontend from backend/public — one process, one URL.
-  // Build the frontend (vite build / next export) and copy its output here.
-  app.use(express.static("public"));
+  // index.html must revalidate on every load: users kept hitting stale cached
+  // scripts after frontend fixes, which looks like "the fix didn't work".
+  app.use(express.static("public", {
+    setHeaders: (res, p) => { if (p.endsWith("index.html")) res.setHeader("Cache-Control", "no-cache"); },
+  }));
 
   app.get("/health", (_req, res) => res.json({
     ok: true,
@@ -301,7 +304,8 @@ async function main() {
 
   // SPA fallback: any non-API route serves the app shell.
   app.get(/^\/(?!markets|live|health|admin).*/, (_req, res) =>
-    res.sendFile("index.html", { root: "public" }, (err) => err && res.status(404).end()));
+    res.sendFile("index.html", { root: "public", headers: { "Cache-Control": "no-cache" } },
+      (err) => err && res.status(404).end()));
 
   app.listen(CFG.port, () => console.log(`[api] listening on :${CFG.port}`));
   await stream.start();
