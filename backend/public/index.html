@@ -387,6 +387,10 @@ async function init(){
   // wallets inject asynchronously — check now and again shortly after load
   const hintCheck=()=>{$("#phantomHint").hidden=detectWallets().length>0;};
   hintCheck();setTimeout(hintCheck,1200);
+  $("#netPill").style.cursor="pointer";
+  $("#netPill").title="Tap for wallet diagnostics";
+  $("#netPill").onclick=openDiag;
+  setTimeout(eagerPhantom,600); // give the extension time to inject
   await refresh(); startSSE(); setInterval(refresh,15000);
 }
 async function refresh(){
@@ -448,19 +452,20 @@ const stdWallets=new Set();
   window.addEventListener("wallet-standard:register-wallet",e=>{try{e.detail(api);}catch{}});
   try{window.dispatchEvent(new CustomEvent("wallet-standard:app-ready",{detail:api}));}catch{}
 })();
+const safe=f=>{try{return f();}catch{return undefined;}};
 function detectWallets(){
   const seen=new Set(),out=[];
   const add=(name,p)=>{if(!p||typeof p.connect!=="function"||seen.has(p))return;seen.add(p);out.push({name,p});};
-  add("Phantom",window.phantom?.solana);
-  add("Solflare",window.solflare);
-  add("Backpack",window.backpack?.solana??window.backpack);
-  add("Brave Wallet",window.braveSolana);
-  add("Glow",window.glow?.solana??window.glowSolana);
-  add("Exodus",window.exodus?.solana);
-  add("Trust Wallet",window.trustwallet?.solana);
-  add("Coinbase Wallet",window.coinbaseSolana);
-  if(window.solana){const p=window.solana;
-    add(p.isPhantom?"Phantom":p.isSolflare?"Solflare":p.isBraveWallet?"Brave Wallet":p.isExodus?"Exodus":p.isGlow?"Glow":p.isTrust||p.isTrustWallet?"Trust Wallet":"Solana wallet",p);}
+  add("Phantom",safe(()=>window.phantom?.solana));
+  add("Solflare",safe(()=>window.solflare));
+  add("Backpack",safe(()=>window.backpack?.solana??window.backpack));
+  add("Brave Wallet",safe(()=>window.braveSolana));
+  add("Glow",safe(()=>window.glow?.solana??window.glowSolana));
+  add("Exodus",safe(()=>window.exodus?.solana));
+  add("Trust Wallet",safe(()=>window.trustwallet?.solana));
+  add("Coinbase Wallet",safe(()=>window.coinbaseSolana));
+  const gen=safe(()=>window.solana);
+  if(gen)add(gen.isPhantom?"Phantom":gen.isSolflare?"Solflare":gen.isBraveWallet?"Brave Wallet":gen.isExodus?"Exodus":gen.isGlow?"Glow":gen.isTrust||gen.isTrustWallet?"Trust Wallet":"Solana wallet",gen);
   for(const w of stdWallets){
     const nm=w.name||"Wallet";
     if(out.some(x=>x.name.toLowerCase()===nm.toLowerCase()))continue; // same wallet, both paths
@@ -468,6 +473,7 @@ function detectWallets(){
   }
   return out;
 }
+let lastWalletError=null;
 const withTimeout=(p,ms)=>Promise.race([p,
   new Promise((_,rej)=>setTimeout(()=>rej(new Error("wallet didn't respond — open the wallet extension, unlock it, then try again")),ms))]);
 function setDisconnected(){
@@ -497,9 +503,67 @@ async function connectTo(w){
     toast(`${esc(w.name)} connected.`,"ok");refresh();
   }catch(e){
     btn.textContent="Connect wallet";
-    toast("Couldn't connect"+(e?.message?": "+esc(e.message):".")+"","err");
+    lastWalletError=`${w.name}: ${e?.message||e?.code||"unknown error"}`;
+    console.error("[wallet] connect failed:",e);
+    const rejected=e?.code===4001||/reject|cancell?ed|denied/i.test(String(e?.message||""));
+    toast(rejected
+      ?"Connection request was rejected in the wallet — click Connect and approve it this time."
+      :"Couldn't connect"+(e?.message?": "+esc(e.message):".")+` <a href="#" id="diagLink">Run wallet diagnostics</a>`,"err");
+    setTimeout(()=>{const l=$("#diagLink");if(l)l.onclick=ev=>{ev.preventDefault();openDiag();};},0);
   }
   btn.disabled=false;
+}
+/* Phantom remembers trusted sites: reconnect silently on load if approved before. */
+async function eagerPhantom(){
+  const ph=safe(()=>window.phantom?.solana);
+  if(!ph||wallet)return;
+  try{
+    const r=await ph.connect({onlyIfTrusted:true});
+    const pk=r?.publicKey??ph.publicKey;
+    if(!pk)return;
+    walletProvider={p:ph};walletName="Phantom";wallet=pk.toString();
+    $("#walletBtn").textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
+    $("#faucetBtn").hidden=health?.network!=="devnet";
+    try{ph.on?.("disconnect",setDisconnected);}catch{}
+    refresh();
+  }catch{/* not trusted yet — user connects manually */}
+}
+/* Diagnostics: tap the network pill (or the link in a failed-connect toast).
+   Shows exactly what this page can see, so "it doesn't connect" becomes fixable. */
+function openDiag(){
+  const ws=detectWallets();
+  const probes=[
+    ["window.phantom.solana",safe(()=>!!window.phantom?.solana)],
+    ["window.solana",safe(()=>!!window.solana)],
+    ["window.solana.isPhantom",safe(()=>!!window.solana?.isPhantom)],
+    ["window.solflare",safe(()=>!!window.solflare)],
+    ["window.backpack",safe(()=>!!window.backpack)],
+    ["Wallet Standard wallets",stdWallets.size],
+  ];
+  const insecure=location.protocol!=="https:"&&!["localhost","127.0.0.1"].includes(location.hostname);
+  const fileProto=location.protocol==="file:";
+  $("#sheet").innerHTML=`<h3>Wallet diagnostics</h3>
+    <div class="ticket" style="border-color:var(--line)">
+      <div class="head"><span class="t" style="color:var(--txt)">THIS PAGE</span></div>
+      <div class="krow"><span class="k">Origin</span><span class="v">${esc(location.origin)}</span></div>
+      <div class="krow"><span class="k">Wallets detected</span><span class="v">${ws.length?ws.map(w=>esc(w.name)).join(", "):"none"}</span></div>
+      ${probes.map(([k,v])=>`<div class="krow"><span class="k">${esc(k)}</span><span class="v">${v===true?"yes":v===false||v===undefined?"no":esc(String(v))}</span></div>`).join("")}
+      <div class="krow"><span class="k">Contract</span><span class="v">${esc(String(health?.contract??"unknown"))}</span></div>
+      <div class="krow"><span class="k">Last wallet error</span><span class="v">${esc(lastWalletError??"none")}</span></div>
+    </div>
+    <div class="note" style="font-size:12px;line-height:1.8;margin-top:12px">
+      ${fileProto?"⚠️ <b>This page is opened as a file://</b> — wallets never inject there. Open it through the server URL instead.<br>":""}
+      ${insecure?"⚠️ <b>Not HTTPS.</b> Some wallets refuse to connect on plain-http sites that aren't localhost. Serve over HTTPS or open via localhost.<br>":""}
+      ${ws.length===0?"⚠️ <b>No wallet visible to this page.</b> Desktop: install/enable the extension and refresh. Mobile: open this URL inside the wallet app's own browser — normal browser tabs can't see wallets.<br>":""}
+      If Phantom is installed but not listed: click the Phantom icon in the toolbar to <b>unlock</b> it, then refresh this page. If a connect popup never appears, check for a blocked-popup icon in the address bar and look at the Phantom extension icon — the request sometimes waits there as a badge.
+    </div>
+    <div class="sides" style="margin-top:14px">
+      <button class="btn btn-g side" id="cancelBtn">Close</button>
+      <button class="btn btn-v side" id="retryConnBtn">Try connecting</button>
+    </div>`;
+  $("#sheet").classList.add("open");$("#sheetBack").classList.add("open");
+  $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
+  $("#retryConnBtn").onclick=()=>{closeSheet();$("#walletBtn").click();};
 }
 function openWalletPicker(ws){
   $("#sheet").innerHTML=`<h3>Choose a wallet</h3>
