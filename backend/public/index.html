@@ -432,11 +432,22 @@ function detectSettlements(){
   }
 }
 
-/* ============ wallet: connect to ANY injected Solana wallet ============
-   Every major Solana wallet (Phantom, Solflare, Backpack, Brave, Exodus,
-   Glow, Trust, Coinbase, …) injects a provider with the same connect /
-   signTransaction interface. We detect them all, connect directly if there
-   is exactly one, and show a picker when there are several. */
+/* ============ wallet: connect to ANY Solana wallet on the device ============
+   Two discovery paths, because wallets ship both:
+   1. Legacy injected globals (window.phantom.solana, window.solflare, …)
+   2. The Wallet Standard: wallets register themselves via the
+      "wallet-standard:register-wallet" / "wallet-standard:app-ready" events —
+      this is how newer wallet builds and most in-app browsers announce.
+   One wallet found => connect straight away; several => picker sheet. */
+const stdWallets=new Set();
+(function initWalletStandard(){
+  const collect=(...ws)=>{for(const w of ws){try{
+    if(w?.features?.["standard:connect"]&&(w.chains||[]).some(c=>String(c).startsWith("solana")))stdWallets.add(w);
+  }catch{}}};
+  const api={register:(...ws)=>{collect(...ws);return()=>{};}};
+  window.addEventListener("wallet-standard:register-wallet",e=>{try{e.detail(api);}catch{}});
+  try{window.dispatchEvent(new CustomEvent("wallet-standard:app-ready",{detail:api}));}catch{}
+})();
 function detectWallets(){
   const seen=new Set(),out=[];
   const add=(name,p)=>{if(!p||typeof p.connect!=="function"||seen.has(p))return;seen.add(p);out.push({name,p});};
@@ -450,8 +461,15 @@ function detectWallets(){
   add("Coinbase Wallet",window.coinbaseSolana);
   if(window.solana){const p=window.solana;
     add(p.isPhantom?"Phantom":p.isSolflare?"Solflare":p.isBraveWallet?"Brave Wallet":p.isExodus?"Exodus":p.isGlow?"Glow":p.isTrust||p.isTrustWallet?"Trust Wallet":"Solana wallet",p);}
+  for(const w of stdWallets){
+    const nm=w.name||"Wallet";
+    if(out.some(x=>x.name.toLowerCase()===nm.toLowerCase()))continue; // same wallet, both paths
+    out.push({name:nm,std:w});
+  }
   return out;
 }
+const withTimeout=(p,ms)=>Promise.race([p,
+  new Promise((_,rej)=>setTimeout(()=>rej(new Error("wallet didn't respond — open the wallet extension, unlock it, then try again")),ms))]);
 function setDisconnected(){
   wallet=null;walletProvider=null;walletName=null;positions=[];holdings=null;
   $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;
@@ -459,16 +477,29 @@ function setDisconnected(){
 }
 async function connectTo(w){
   closeSheet();
+  const btn=$("#walletBtn");btn.disabled=true;btn.textContent="Connecting…";
   try{
-    const r=await w.p.connect();
-    const pk=r?.publicKey??w.p.publicKey;
-    if(!pk)throw new Error("wallet returned no account");
-    walletProvider=w.p;walletName=w.name;wallet=pk.toString();
-    $("#walletBtn").textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
+    if(w.std){
+      const res=await withTimeout(w.std.features["standard:connect"].connect(),60000);
+      const acct=(res.accounts||[]).find(a=>(a.chains||[]).some(c=>String(c).startsWith("solana")))??res.accounts?.[0];
+      if(!acct)throw new Error("no Solana account was approved");
+      walletProvider={std:w.std,acct};wallet=acct.address;
+    }else{
+      const r=await withTimeout(w.p.connect(),60000);
+      const pk=r?.publicKey??w.p.publicKey;
+      if(!pk)throw new Error("wallet returned no account");
+      walletProvider={p:w.p};wallet=pk.toString();
+      try{w.p.on?.("disconnect",setDisconnected);}catch{}
+    }
+    walletName=w.name;
+    btn.textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
     $("#faucetBtn").hidden=health?.network!=="devnet";
-    try{w.p.on?.("disconnect",setDisconnected);}catch{}
     toast(`${esc(w.name)} connected.`,"ok");refresh();
-  }catch(e){toast("Connection cancelled"+(e?.message?": "+esc(e.message):".")+"","err");}
+  }catch(e){
+    btn.textContent="Connect wallet";
+    toast("Couldn't connect"+(e?.message?": "+esc(e.message):".")+"","err");
+  }
+  btn.disabled=false;
 }
 function openWalletPicker(ws){
   $("#sheet").innerHTML=`<h3>Choose a wallet</h3>
@@ -494,7 +525,11 @@ function openWalletHelp(){
   $("#sheetBack").onclick=$("#cancelBtn").onclick=closeSheet;
 }
 $("#walletBtn").onclick=async()=>{
-  if(wallet){try{await walletProvider?.disconnect?.();}catch{}setDisconnected();return;}
+  if(wallet){
+    try{await walletProvider?.p?.disconnect?.();}catch{}
+    try{await walletProvider?.std?.features?.["standard:disconnect"]?.disconnect?.();}catch{}
+    setDisconnected();return;
+  }
   const ws=detectWallets();
   if(!ws.length){openWalletHelp();return;}
   if(ws.length===1)return connectTo(ws[0]);
@@ -509,19 +544,40 @@ $("#faucetBtn").onclick=async()=>{
   }catch(e){toast("Faucet: "+e.message,"err");}
   $("#faucetBtn").disabled=false;$("#faucetBtn").textContent="Get test USDC";
 };
+function b64FromBytes(b){let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s);}
+function b58(bytes){const A="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let zeros=0;while(zeros<bytes.length&&bytes[zeros]===0)zeros++;
+  const d=[];for(const b of bytes){let c=b;for(let j=0;j<d.length;j++){c+=d[j]<<8;d[j]=c%58;c=(c/58)|0;}while(c){d.push(c%58);c=(c/58)|0;}}
+  let out="";for(let i=0;i<zeros;i++)out+="1";for(let i=d.length-1;i>=0;i--)out+=A[d[i]];return out;}
 async function signAndSend(b64){
   if(!walletProvider)throw new Error("connect a wallet first");
+  const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  if(walletProvider.std){
+    const w=walletProvider.std,acct=walletProvider.acct;
+    const chain="solana:"+(health?.network==="mainnet"?"mainnet":"devnet");
+    const st=w.features["solana:signTransaction"];
+    if(st){ // sign in wallet, submit via our backend RPC
+      const [out]=await st.signTransaction({transaction:bytes,account:acct,chain});
+      const r=await postJ("/tx/submit",{tx:b64FromBytes(out.signedTransaction)});
+      return r.tx;
+    }
+    const ss=w.features["solana:signAndSendTransaction"];
+    if(ss){
+      const [out]=await ss.signAndSendTransaction({transaction:bytes,account:acct,chain});
+      return b58(out.signature);
+    }
+    throw new Error(walletName+" can't sign transactions on this page");
+  }
+  const p=walletProvider.p;
   if(!web3)web3=await import("https://esm.sh/@solana/web3.js@1.95.3");
-  const tx=web3.Transaction.from(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));
-  if(typeof walletProvider.signAndSendTransaction==="function"){
-    const r=await walletProvider.signAndSendTransaction(tx);
+  const tx=web3.Transaction.from(bytes);
+  if(typeof p.signAndSendTransaction==="function"){
+    const r=await p.signAndSendTransaction(tx);
     return typeof r==="string"?r:r.signature;
   }
   // wallets that only sign: submit through the backend's RPC instead
-  const signed=await walletProvider.signTransaction(tx);
-  const bytes=signed.serialize();
-  let bin="";for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
-  const r=await postJ("/tx/submit",{tx:btoa(bin)});
+  const signed=await p.signTransaction(tx);
+  const r=await postJ("/tx/submit",{tx:b64FromBytes(signed.serialize())});
   return r.tx;
 }
 
@@ -721,7 +777,9 @@ function openSheet(marketId,sideYes){
   const m=markets.find(x=>x.marketId===marketId);if(!m)return;
   if(!wallet){toast("Connect your wallet first — top right.","err");return;}
   const p=m.pools||{yesPool:0,noPool:0};
+  const demo=health?.contract&&String(health.contract).includes("demo");
   $("#sheet").innerHTML=`<h3>Stake ${sideYes?"YES":"NO"} — ${esc(m.question)}</h3>
+    ${demo?`<div class="hint" style="margin-top:12px"><b>Demo mode:</b> the contract isn't deployed yet, so no wallet approval window will appear — staking activates the moment the deploy completes.</div>`:""}
     <input class="amt" id="amt" type="number" min="0.1" step="0.1" placeholder="USDC amount" inputmode="decimal">
     <div class="preview" id="prev">Enter an amount to preview your payout.</div>
     <div class="note">Pools shift until kickoff; payout is an estimate. 1% fee on winnings only. Settlement is proof-verified on Solana at full time.</div>
