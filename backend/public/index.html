@@ -211,7 +211,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-12.4"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.5"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -700,62 +700,107 @@ function countdown(ko){
   return days>0?`kicks off in ${days}d ${h}h`:h>0?`kicks off in ${h}h ${m}m`:`kicks off in ${m}m`;
 }
 
-function renderMatches(){
-  const now=Date.now()/1000;
-  const groups=new Map();
-  for(const m of markets){const g=groups.get(m.fixtureId)??[];g.push(m);groups.set(m.fixtureId,g);}
-  const cards=[...groups.entries()].map(([f,mks])=>{
-    const fx=mks[0].fixture||{};
-    const s=live[f]||{};
-    const isLive=s.phase!=null&&!TERMINAL.includes(Number(s.phase));
-    const isDone=s.phase!=null&&TERMINAL.includes(Number(s.phase));
-    const n1=fx.name1??"Home",n2=fx.name2??"Away";
-    const t1=teamName(n1),t2=teamName(n2);
-    const untitled=!fx.name1&&!fx.name2;
-    const head=mks.find(m=>/beat|win/i.test(m.question))??mks[0];
-    const p=head?.pools, tot=p?(p.yesPool+p.noPool):0;
-    const yes=tot>0?p.yesPool/tot:null;
-    return `<div class="fx" data-fxid="${f}">
-      <div class="mhead">
-        ${teamHtml(n1,fx.code1)}
-        <div class="mid">
-          ${isLive?`<span class="chip live">● LIVE</span>`:isDone?`<span class="chip ft">FULL TIME</span>`:`<span class="chip up">UPCOMING</span>`}
-          ${scoreHtml(s)}
-          <div class="ko">${untitled?`Fixture #${f}`:""} ${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
-        </div>
-        ${teamHtml(n2,fx.code2)}
-      </div>
-      ${formRow(fx.name1,fx.name2)}
-      <div class="whot">Who will win? · market-implied</div>
-      ${yes!=null?`<div class="rings">
+const TERMINALSET=[5,10,13],VOIDSET=[15,16,19];
+/* Score for a fixture, merging the freshest live SSE with the server's
+   authoritative snapshot (which covers ended matches and restarts). */
+function serverScore(f){
+  const m=markets.find(x=>x.fixtureId===f);
+  if(m&&m.score)return m.score;
+  const u=(upcoming||[]).find(x=>Number(x.fixtureId)===f);
+  return (u&&u.score)||null;
+}
+function mergedScore(f){
+  const l=live[f]||{},srv=serverScore(f)||{};
+  return {
+    home:l.home??srv.home??null,
+    away:l.away??srv.away??null,
+    phase:l.phase??srv.phase??null,
+    state:srv.state??null,
+  };
+}
+function fixtureState(f,mks){
+  const sc=mergedScore(f);
+  if(mks&&mks.some(m=>m.status==="voided"))return"void";
+  if(mks&&mks.some(m=>m.status==="settled"))return"finished";
+  const ph=sc.phase;
+  if(ph!=null){
+    if(TERMINALSET.includes(Number(ph)))return"finished";
+    if(VOIDSET.includes(Number(ph)))return"void";
+    return"live";
+  }
+  if(sc.state)return sc.state;
+  const ko=(mks?.[0]?.fixture||serverFixture(f)||{}).kickoff;
+  if(sc.home!=null||sc.away!=null)return"live";
+  if(ko&&Date.now()/1000>=ko)return"live";
+  return"upcoming";
+}
+function serverFixture(f){
+  const m=markets.find(x=>x.fixtureId===f);
+  if(m&&m.fixture)return m.fixture;
+  return (upcoming||[]).find(x=>Number(x.fixtureId)===f)||null;
+}
+function chipFor(state){
+  return state==="live"?`<span class="chip live">● LIVE</span>`
+    :state==="finished"?`<span class="chip ft">FULL TIME</span>`
+    :state==="void"?`<span class="chip up">VOID</span>`
+    :`<span class="chip up">UPCOMING</span>`;
+}
+function fixtureCard(f,mks,fx,state){
+  const sc=mergedScore(f),now=Date.now()/1000;
+  const n1=fx.name1??"Home",n2=fx.name2??"Away";
+  const t1=teamName(n1),t2=teamName(n2);
+  const untitled=!fx.name1&&!fx.name2;
+  const head=mks&&(mks.find(m=>/beat|win/i.test(m.question))??mks[0]);
+  const p=head?.pools, tot=p?(p.yesPool+p.noPool):0;
+  const yes=tot>0?p.yesPool/tot:null;
+  const showScore=state==="live"||state==="finished";
+  const koStr=fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+  const ringsOrCount=mks
+    ? (yes!=null?`<div class="whot">Who will win? · market-implied</div><div class="rings">
         <div class="ring">${ring(yes,"var(--live)","W")}<div class="lab">${esc(t1.label)} <b>${Math.round(yes*100)}%</b></div></div>
         <div class="ring">${ring(1-yes,"var(--lose)","L")}<div class="lab">${esc(t2.label)}/draw <b>${Math.round((1-yes)*100)}%</b></div></div>
-      </div>`:`<div class="ko" style="margin-top:8px">Rings fill from the first stakes — pools are empty, be first in.</div>`}
-      ${mks.map(marketRow.bind(null,now)).join("")}
-    </div>`;
-  }).join("");
-
-  // Full slate: fixtures known to the node that don't have markets yet.
-  const slate=(upcoming||[]).filter(u=>u.fixtureId&&!groups.has(Number(u.fixtureId)))
-    .sort((a,b)=>(a.kickoff??1/0)-(b.kickoff??1/0));
-  const slateHtml=slate.length?`<div class="sechead">Upcoming fixtures</div>`+slate.map(fx=>{
-    const n1=fx.name1??"TBD",n2=fx.name2??"TBD";
-    return `<div class="fx">
-      <div class="mhead">
-        ${teamHtml(n1,fx.code1)}
-        <div class="mid"><span class="chip up">UPCOMING</span>
-          <div class="score">– : –</div>
-          <div class="ko">${fx.kickoff?new Date(fx.kickoff*1000).toLocaleString(undefined,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
-        </div>
-        ${teamHtml(n2,fx.code2)}
+      </div>`:(state==="upcoming"?`<div class="ko" style="margin-top:8px">Rings fill from the first stakes — pools are empty, be first in.</div>`:""))
+    : `<div class="ko" style="margin-top:10px">${state==="upcoming"?(countdown(fx.kickoff)||"Kickoff time to be confirmed")+" · markets open before kickoff":state==="finished"?"Final — no market was opened for this fixture":""}</div>`;
+  return `<div class="fx" data-fxid="${f}">
+    <div class="mhead">
+      ${teamHtml(n1,fx.code1)}
+      <div class="mid">
+        ${chipFor(state)}
+        ${showScore?scoreHtml(sc):`<div class="score">– : –</div>`}
+        <div class="ko">${untitled?`Fixture #${f}`:""} ${koStr}</div>
       </div>
-      ${formRow(fx.name1,fx.name2)}
-      <div class="ko" style="margin-top:10px">${countdown(fx.kickoff)||"Kickoff time to be confirmed"} · markets open before kickoff</div>
-    </div>`;}).join(""):"";
-
-  if(!cards&&!slateHtml)
-    return `<div class="empty"><b style="color:var(--txt)">No markets yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div>`;
-  return cards+slateHtml;
+      ${teamHtml(n2,fx.code2)}
+    </div>
+    ${formRow(fx.name1,fx.name2)}
+    ${ringsOrCount}
+    ${mks?mks.map(marketRow.bind(null,now)).join(""):""}
+  </div>`;
+}
+function renderMatches(){
+  const groups=new Map();
+  for(const m of markets){const g=groups.get(m.fixtureId)??[];g.push(m);groups.set(m.fixtureId,g);}
+  const buckets={live:[],upcoming:[],finished:[]};
+  // fixtures with markets
+  for(const [f,mks] of groups.entries()){
+    const st=fixtureState(f,mks);
+    const card=fixtureCard(f,mks,mks[0].fixture||{},st);
+    (st==="live"?buckets.live:st==="upcoming"?buckets.upcoming:buckets.finished).push({f,card,ko:(mks[0].fixture||{}).kickoff||0});
+  }
+  // fixtures known to the node without markets (full slate)
+  for(const u of (upcoming||[])){
+    const f=Number(u.fixtureId);if(!f||groups.has(f))continue;
+    const st=fixtureState(f,null);
+    const card=fixtureCard(f,null,u,st);
+    (st==="live"?buckets.live:st==="upcoming"?buckets.upcoming:buckets.finished).push({f,card,ko:u.kickoff||0});
+  }
+  if(!buckets.live.length&&!buckets.upcoming.length&&!buckets.finished.length)
+    return `<div class="empty"><b style="color:var(--txt)">No fixtures yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div>`;
+  const sec=(title,arr,asc)=>{if(!arr.length)return"";
+    arr.sort((a,b)=>asc?(a.ko-b.ko):(b.ko-a.ko));
+    return `<div class="sechead">${title} <span style="color:var(--mut);font-weight:600">· ${arr.length}</span></div>`+arr.map(x=>x.card).join("");};
+  return sec("● Live now",buckets.live,true)
+    +sec("Upcoming fixtures",buckets.upcoming,true)
+    +sec("Results",buckets.finished,false);
 }
 
 function marketRow(now,m){
@@ -793,8 +838,9 @@ function renderMine(){
     const p=r.pools||{yesPool:0,noPool:0};
     const fx=r.fixture||{};
     const vs=fx.name1?`<div class="vsline">${inlineFlag(fx.name1,fx.code1)}${esc(teamName(fx.name1).label)} vs ${esc(teamName(fx.name2).label)} ${inlineFlag(fx.name2,fx.code2)}</div>`:"";
-    const s=live[r.fixtureId]||{};
-    const ftNow=(s.phase!=null&&TERMINAL.includes(Number(s.phase)))||(r.settleAfterTs&&now>r.settleAfterTs);
+    const s=mergedScore(r.fixtureId);
+    const ftNow=(s.phase!=null&&TERMINAL.includes(Number(s.phase)))||s.state==="finished"||(r.settleAfterTs&&now>r.settleAfterTs);
+    const scoreLine=(s.home!=null||s.away!=null)?`<div class="payline">Score: <b>${s.home??"–"} : ${s.away??"–"}</b></div>`:"";
     let cls="",top="",line="",act="";
     if(r.status==="settled"){
       const wonAmt=r.outcome==="YES"?r.yes:r.no;
@@ -830,7 +876,7 @@ function renderMine(){
     return `<div class="fx ${cls}">
       ${top}
       <div class="q" style="font-weight:700;margin-top:6px">${esc(r.question)}</div>
-      ${vs}${line}
+      ${vs}${scoreLine}${line}
       <div class="rowend"><span></span><span style="display:flex;gap:8px">${act}</span></div>
     </div>`;
   }).join("");

@@ -30,6 +30,7 @@ import { VaultClient } from "./solana/vault.js";
 import { Keeper } from "./keeper.js";
 import { MarketRegistry, homeWinProp, teamCornersOverProp, totalGoalsOverProp } from "./markets.js";
 import { probeFixtureFeed } from "./fixtures.js";
+import { parseScorePayload, matchState, FixtureScore } from "./scores.js";
 
 async function main() {
   // Replay/demo mode replays a recording through the same pipeline and needs
@@ -78,22 +79,61 @@ async function main() {
   let streamStatus = "starting";
   stream.on("status", (s) => { streamStatus = s; console.log(`[stream] ${s}`); });
 
-  // Track which fixtures are currently emitting updates (for /admin/live-fixtures).
-  const liveFixtures = new Map<number, { home?: number; away?: number; phase?: number; lastSeen: number }>();
+  // Authoritative per-fixture score store, fed by BOTH the live stream and
+  // periodic REST snapshots. This is why finished matches (that ended before
+  // this process started, or after a restart) still show their final score and
+  // settle: we ask /api/scores/snapshot for the real state, we don't rely on
+  // having witnessed the goals live.
+  interface ScoreEntry extends FixtureScore { lastSeen: number; source: "stream" | "snapshot" }
+  const fixtureScores = new Map<number, ScoreEntry>();
+  const mergeScore = (f: number, s: FixtureScore, source: "stream" | "snapshot") => {
+    const cur = fixtureScores.get(f) ?? { lastSeen: 0, source };
+    if (s.home !== undefined) cur.home = s.home;
+    if (s.away !== undefined) cur.away = s.away;
+    if (s.phase !== undefined) cur.phase = s.phase;
+    if (s.seq !== undefined) cur.seq = s.seq;
+    cur.lastSeen = Date.now(); cur.source = source;
+    fixtureScores.set(f, cur);
+  };
   stream.on("score", (e) => {
     const d = e.data ?? {};
     const f = Number(d.fixtureId ?? d.fixture_id ?? d.fixture?.id);
-    if (!f) return;
-    const cur = liveFixtures.get(f) ?? { lastSeen: 0 };
-    const h = d.homeScore ?? d.home_score ?? d.score?.home;
-    const a = d.awayScore ?? d.away_score ?? d.score?.away;
-    const ph = d.phase ?? d.gamePhase ?? d.phaseId;
-    if (h != null) cur.home = Number(h);
-    if (a != null) cur.away = Number(a);
-    if (ph != null) cur.phase = Number(ph);
-    cur.lastSeen = Date.now();
-    liveFixtures.set(f, cur);
+    if (f) mergeScore(f, parseScorePayload(d), "stream");
   });
+
+  // Poll the REST snapshot for every fixture that has a market or is upcoming,
+  // so scores/phase stay correct without a live stream. Live mode only (needs
+  // TxLINE credentials); skipped in replay/demo, which drives scores off the file.
+  async function pollSnapshots() {
+    if (CFG.replayFile) return;
+    const ids = new Set<number>();
+    for (const m of registry.all()) ids.add(m.spec.fixtureId);
+    for (const u of fixtureMeta.values()) if (u.fixtureId) ids.add(Number(u.fixtureId));
+    for (const f of ids) {
+      const cur = fixtureScores.get(f);
+      // don't clobber fresh live-stream data (< 30s old)
+      if (cur && cur.source === "stream" && Date.now() - cur.lastSeen < 30_000) continue;
+      try { mergeScore(f, parseScorePayload(await txline.scoresSnapshot(f)), "snapshot"); }
+      catch { /* fixture not on the feed yet, or credentials unavailable */ }
+    }
+  }
+  void pollSnapshots();
+  setInterval(() => void pollSnapshots(), 30_000);
+
+  // Score + derived match-state for a fixture, combining feed data with the
+  // registry's settlement status.
+  const scoreOf = (fixtureId: number) => {
+    const s = fixtureScores.get(fixtureId);
+    const mk = registry.all().find((m) => m.spec.fixtureId === fixtureId);
+    const settled = registry.all().some((m) => m.spec.fixtureId === fixtureId && m.status === "settled");
+    const voided = registry.all().some((m) => m.spec.fixtureId === fixtureId && m.status === "voided");
+    const state = matchState({
+      phase: s?.phase, home: s?.home, away: s?.away,
+      kickoff: meta(fixtureId)?.kickoff, settled, voided,
+    });
+    return { home: s?.home ?? null, away: s?.away ?? null, phase: s?.phase ?? null,
+      source: s?.source ?? null, state, updatedAt: s?.lastSeen ?? null };
+  };
 
   const app = express();
   app.use(cors(), express.json());
@@ -115,8 +155,19 @@ async function main() {
     fixtureSource,
   }));
 
-  // Every known fixture (with or without markets) so the UI shows the slate.
-  app.get("/fixtures", (_req, res) => res.json([...fixtureMeta.values()]));
+  // Every known fixture (with or without markets), each with its live/final
+  // score and derived state (upcoming | live | finished | void).
+  app.get("/fixtures", (_req, res) => res.json(
+    [...fixtureMeta.values()].map((u) => ({ ...u, score: u.fixtureId ? scoreOf(Number(u.fixtureId)) : null }))));
+
+  // Just the scores map, keyed by fixtureId — handy for judges hitting the API.
+  app.get("/scores", (_req, res) => {
+    const ids = new Set<number>();
+    for (const m of registry.all()) ids.add(m.spec.fixtureId);
+    for (const u of fixtureMeta.values()) if (u.fixtureId) ids.add(Number(u.fixtureId));
+    res.json(Object.fromEntries([...ids].map((f) => [f, scoreOf(f)])));
+  });
+  app.get("/scores/:id", (req, res) => res.json(scoreOf(Number(req.params.id))));
 
   // Wallet holdings: SOL + USDC, so users watch the payout actually land.
   app.get("/balance/:address", async (req, res) => {
@@ -183,7 +234,8 @@ async function main() {
   app.get("/markets", async (_req, res) => {
     const out = await Promise.all(registry.all().map(async (m) => {
       const p = await pools(m.spec.marketId);      // reconciles first
-      return { ...publicView(registry.get(m.spec.marketId) ?? m), pools: p, fixture: meta(m.spec.fixtureId) };
+      return { ...publicView(registry.get(m.spec.marketId) ?? m), pools: p,
+        fixture: meta(m.spec.fixtureId), score: scoreOf(m.spec.fixtureId) };
     }));
     res.json(out);
   });
@@ -193,7 +245,7 @@ async function main() {
     if (!registry.get(id)) return res.status(404).json({ error: "not found" });
     const p = await pools(id);                      // reconciles first
     const m = registry.get(id)!;
-    res.json({ ...publicView(m), pools: p, fixture: meta(m.spec.fixtureId) });
+    res.json({ ...publicView(m), pools: p, fixture: meta(m.spec.fixtureId), score: scoreOf(m.spec.fixtureId) });
   });
 
   // Unsigned transactions: server builds, Phantom signs in the browser.
@@ -379,8 +431,9 @@ async function main() {
   // convenient source of (fixtureId, kickoff) for seeding markets on match day.
   app.get("/admin/live-fixtures", (req, res) => {
     if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
-    res.json([...liveFixtures.entries()]
-      .map(([fixtureId, v]) => ({ fixtureId, ...v, fixture: meta(fixtureId) }))
+    res.json([...fixtureScores.entries()]
+      .map(([fixtureId, v]) => ({ fixtureId, home: v.home, away: v.away, phase: v.phase,
+        source: v.source, lastSeen: v.lastSeen, score: scoreOf(fixtureId), fixture: meta(fixtureId) }))
       .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0)));
   });
 

@@ -8,6 +8,7 @@
 import { TxlineClient } from "./txline/client.js";
 
 const CANDIDATE_PATHS = [
+  "/api/fixtures/snapshot",   // documented; returns the Fixture shape (participant1/2, start_time, competition)
   "/api/fixtures/upcoming",
   "/api/fixtures",
   "/api/scores/fixtures",
@@ -51,17 +52,19 @@ function normalize(data: unknown): FixtureRow[] {
     if (!f || typeof f !== "object") continue;
     const id = Number(f.fixtureId ?? f.fixture_id ?? f.id);
     if (!Number.isFinite(id) || id <= 0) continue;
-    const home = f.homeTeam ?? f.home_team ?? f.home ?? f.team1 ?? f.competitors?.[0];
-    const away = f.awayTeam ?? f.away_team ?? f.away ?? f.team2 ?? f.competitors?.[1];
     const nameOf = (t: any) => typeof t === "string" ? t : t?.name ?? t?.teamName ?? undefined;
     const codeOf = (t: any) => typeof t === "object" ? (t?.countryCode ?? t?.country_code ?? t?.code) : undefined;
+    // TxLINE Fixture shape (see idls/txoracle.json): participant1/participant2 +
+    // participant1_is_home; fall back to generic home/away shapes.
+    const p1 = f.participant1 ?? f.homeTeam ?? f.home_team ?? f.home ?? f.team1 ?? f.competitors?.[0];
+    const p2 = f.participant2 ?? f.awayTeam ?? f.away_team ?? f.away ?? f.team2 ?? f.competitors?.[1];
     out.push({
       fixtureId: id,
-      name1: nameOf(home),
-      name2: nameOf(away),
-      kickoff: toUnixSec(f.kickoff ?? f.kickoffTs ?? f.kickoff_ts ?? f.startTime ?? f.start_time ?? f.date),
-      code1: codeOf(home),
-      code2: codeOf(away),
+      name1: nameOf(p1),
+      name2: nameOf(p2),
+      kickoff: toUnixSec(f.kickoff ?? f.kickoffTs ?? f.kickoff_ts ?? f.startTime ?? f.start_time ?? f.date ?? f.ts),
+      code1: codeOf(p1),
+      code2: codeOf(p2),
       league: nameOf(f.league ?? f.competition),
     });
   }

@@ -14,9 +14,8 @@ import { MarketRegistry } from "./markets.js";
 import { ScoreStream, ScoreEvent } from "./txline/stream.js";
 import { TxlineClient } from "./txline/client.js";
 import { VaultClient } from "./solana/vault.js";
+import { TERMINAL_PHASES, VOID_PHASES, parseScorePayload } from "./scores.js";
 
-const TERMINAL_PHASES = new Set([5, 10, 13]);      // F, FET, FPE
-const VOID_PHASES = new Set([15, 16, 19]);         // A, C, P
 const SETTLE_DELAY_MS = 90_000; // let TxLINE's final packets anchor before proving
 
 interface FixtureState { phase?: number; lastSeq?: number; }
@@ -163,18 +162,11 @@ export class Keeper {
   private async snapshotState(fixtureId: number): Promise<{ phase?: number; seq?: number }> {
     try {
       const snap: any = await this.txline.scoresSnapshot(fixtureId);
-      const out: { phase?: number; seq?: number } = {};
-      for (const o of [snap, snap?.data, snap?.summary, snap?.snapshot]) {
-        if (!o || typeof o !== "object") continue;
-        const ph = o.phase ?? o.gamePhase ?? o.phaseId;
-        if (out.phase === undefined && typeof ph === "number") out.phase = ph;
-        const sq = o.seq ?? o.sequence ?? o.lastSeq ?? o.latestSeq;
-        if (out.seq === undefined && typeof sq === "number") out.seq = sq;
+      const { phase, seq } = parseScorePayload(snap);
+      if (phase !== undefined) {
+        console.log(`[keeper] snapshot fallback: fixture ${fixtureId} phase=${phase} seq=${seq ?? "?"}`);
       }
-      if (out.phase !== undefined) {
-        console.log(`[keeper] snapshot fallback: fixture ${fixtureId} phase=${out.phase} seq=${out.seq ?? "?"}`);
-      }
-      return out;
+      return { phase, seq };
     } catch (e: any) {
       console.warn(`[keeper] snapshot fallback failed for ${fixtureId}: ${e.message}`);
       return {};
