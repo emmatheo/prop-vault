@@ -69,6 +69,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .team .sub{display:block;font-size:9px;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;margin-top:2px}
 .tbadge{display:block;margin:0 auto 6px;height:40px}
 .tflag{font-size:34px;line-height:40px;display:inline-block;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+.tflagimg{height:28px;width:auto;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.55);margin-top:6px}
+.flgi{height:13px;width:auto;border-radius:2px;vertical-align:-1px}
 .tmono{display:inline-flex;width:40px;height:40px;border-radius:12px;background:linear-gradient(140deg,#26263a,#101014);
  border:1px solid var(--line);align-items:center;justify-content:center;font-family:var(--disp);font-weight:700;font-size:14px;color:var(--mut)}
 .mid{min-width:110px;text-align:center}
@@ -211,7 +213,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.6"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.7"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -299,7 +301,11 @@ const celebrated=new Set(JSON.parse(localStorage.getItem("pv-celebrated")||"[]")
 function markCeleb(k){celebrated.add(k);localStorage.setItem("pv-celebrated",JSON.stringify([...celebrated]));}
 
 /* ================= flags: national teams -> emoji (no image requests) ===== */
-const FLAG_TAG={england:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",scotland:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",wales:"🏴󠁧󠁢󠁷󠁬󠁳󠁿"};
+/* Flags are IMAGES, not emoji: Windows Chrome/Edge has no country-flag emoji
+   (they render as plain letters), which is exactly what a judge on Windows
+   would see. flagcdn serves every ISO country + gb-eng/sct/wls; if the CDN is
+   unreachable the monogram badge takes over via onerror. */
+const FLAG_SPECIAL={england:"gb-eng",scotland:"gb-sct",wales:"gb-wls"};
 const ISO={argentina:"AR",brazil:"BR",france:"FR",germany:"DE",spain:"ES",portugal:"PT",netherlands:"NL",holland:"NL",
 belgium:"BE",italy:"IT",croatia:"HR",uruguay:"UY",colombia:"CO",ecuador:"EC",peru:"PE",chile:"CL",paraguay:"PY",
 bolivia:"BO",venezuela:"VE",mexico:"MX",usa:"US","united states":"US",canada:"CA","costa rica":"CR",panama:"PA",
@@ -316,13 +322,12 @@ switzerland:"CH",austria:"AT",poland:"PL","czech republic":"CZ",czechia:"CZ",slo
 latvia:"LV",lithuania:"LT",belarus:"BY",moldova:"MD",luxembourg:"LU",malta:"MT",cyprus:"CY",
 "trinidad and tobago":"TT","el salvador":"SV",guatemala:"GT",cuba:"CU",haiti:"HT","dominican republic":"DO",
 curacao:"CW","curaçao":"CW",suriname:"SR","new caledonia":"NC"};
-const isoFlag=cc=>String.fromCodePoint(...[...cc.toUpperCase()].map(c=>127397+c.charCodeAt(0)));
 const norm=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toLowerCase();
-function flagOf(name,code){
-  if(code&&/^[A-Za-z]{2}$/.test(code))return isoFlag(code);
+function flagCode(name,code){
+  if(code&&/^[A-Za-z]{2}$/.test(code))return code.toLowerCase();
   const n=norm(name);
-  if(FLAG_TAG[n])return FLAG_TAG[n];
-  if(ISO[n])return isoFlag(ISO[n]);
+  if(FLAG_SPECIAL[n])return FLAG_SPECIAL[n];
+  if(ISO[n])return ISO[n].toLowerCase();
   return null;
 }
 /* "TBD — SF1 winner" placeholders from upcoming.json render as a clean
@@ -337,10 +342,11 @@ function teamName(name){
   return{label:raw,tbd:false};
 }
 function badge(name,code){
-  const fl=name?flagOf(name,code):null;
-  if(fl)return `<span class="tbadge"><span class="tflag" role="img" aria-label="${esc(name)} flag">${fl}</span></span>`;
+  const c=name?flagCode(name,code):null;
   const ini=name?String(name).replace(/[^A-Za-z0-9 ]/g," ").trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"?":"?";
-  return `<span class="tbadge"><span class="tmono">${esc(ini)}</span></span>`;
+  const mono=`<span class="tmono"${c?' style="display:none"':""}>${esc(ini)}</span>`;
+  const img=c?`<img class="tflagimg" src="https://flagcdn.com/h40/${c}.png" srcset="https://flagcdn.com/h80/${c}.png 2x" alt="${esc(name)} flag" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">`:"";
+  return `<span class="tbadge">${img}${mono}</span>`;
 }
 function teamHtml(name,code){
   const t=teamName(name);
@@ -351,7 +357,10 @@ function teamHtml(name,code){
     ${t.tbd?`<span class="sub">to be decided</span>`:""}
   </div>`;
 }
-const inlineFlag=(name,code)=>{const f=flagOf(name,code);return f?f+" ":"";};
+const inlineFlag=(name,code)=>{
+  const c=name?flagCode(name,code):null;
+  return c?`<img class="flgi" src="https://flagcdn.com/h20/${c}.png" srcset="https://flagcdn.com/h40/${c}.png 2x" alt="" loading="lazy" onerror="this.remove()"> `:"";
+};
 
 /* ============ previous matches: from THIS NODE's verified archive ============
    The TxLINE score feed carries no team history, so form is computed from
@@ -777,7 +786,7 @@ function fixtureCard(f,mks,fx,state){
     </div>
     ${formRow(fx.name1,fx.name2)}
     ${ringsOrCount}
-    ${mks?mks.map(marketRow.bind(null,now)).join(""):""}
+    ${mks?mks.map(m=>marketRow(now,state,m)).join(""):""}
   </div>`;
 }
 function renderMatches(){
@@ -807,7 +816,7 @@ function renderMatches(){
     +sec("Results",buckets.finished,false);
 }
 
-function marketRow(now,m){
+function marketRow(now,fxState,m){
   const p=m.pools||{yesPool:0,noPool:0};const tot=p.yesPool+p.noPool;
   const yes=tot>0?Math.round(100*p.yesPool/tot):null;
   const state=m.status!=="open"?m.status:(now>=m.lockTs?"live":"open");
@@ -819,7 +828,9 @@ function marketRow(now,m){
     </div>
     <div class="meta">${tot>0?`Pot ${fmt(tot)} USDC`:"No stakes yet"} · locks at kickoff</div>`;
   }else if(state==="live"){
-    body=`<div class="meta">Locked · pot ${fmt(tot)} USDC · settles by proof at full time</div>`;
+    body=fxState==="finished"
+      ?`<div class="meta">Full time — settling by cryptographic proof<span class="ell"></span>${tot>0?` · pot ${fmt(tot)} USDC`:""}</div>`
+      :`<div class="meta">Locked · pot ${fmt(tot)} USDC · settles by proof at full time</div>`;
   }else if(state==="settled"){
     body=`<div class="rowend"><span class="won ${m.outcome==="YES"?"yes":"no"}">${m.outcome} won · proof-settled</span>
       <button class="btn btn-g" data-receipt="${m.marketId}">Receipt</button></div>`;
