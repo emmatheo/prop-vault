@@ -211,7 +211,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.5"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.6"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -709,14 +709,18 @@ function serverScore(f){
   const u=(upcoming||[]).find(x=>Number(x.fixtureId)===f);
   return (u&&u.score)||null;
 }
+function archiveScore(f){
+  const r=(archive||[]).find(x=>Number(x.fixtureId)===f&&(x.h!=null||x.a!=null));
+  return r?{home:r.h??null,away:r.a??null,final:!!r.final}:null;
+}
 function mergedScore(f){
-  const l=live[f]||{},srv=serverScore(f)||{};
-  return {
-    home:l.home??srv.home??null,
-    away:l.away??srv.away??null,
-    phase:l.phase??srv.phase??null,
-    state:srv.state??null,
-  };
+  const l=live[f]||{},srv=serverScore(f)||{},arc=archiveScore(f)||{};
+  const home=l.home??srv.home??arc.home??null;
+  const away=l.away??srv.away??arc.away??null;
+  const phase=l.phase??srv.phase??null;
+  let state=srv.state??null;
+  if(!state&&arc.final)state="finished";
+  return {home,away,phase,state};
 }
 function fixtureState(f,mks){
   const sc=mergedScore(f);

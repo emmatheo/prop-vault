@@ -37,10 +37,14 @@ async function main() {
   // no TxLINE credentials or wallet — so the demo video and judges can run the
   // whole app standalone. Live mode still onboards TxLINE as before.
   const txline = new TxlineClient();
+  let txlineReady = false;
   if (CFG.replayFile) {
     console.log(`[demo-mode] replay from ${CFG.replayFile} — TxLINE onboarding skipped (no credentials needed)`);
+    // Still enable real snapshot enrichment if credentials happen to be present,
+    // so a replay demo can also show real final scores. Never blocks boot.
+    txline.init().then(() => { txlineReady = true; console.log("[txline] credentials available — REST snapshots enabled alongside replay"); }).catch(() => {});
   } else {
-    try { await txline.init(); }
+    try { await txline.init(); txlineReady = true; }
     catch (e: any) { console.warn(`[txline] onboarding failed (${e.message}) — live feed unavailable; set REPLAY_FILE to run the demo without credentials`); }
   }
   let vault: VaultClient | null = null;
@@ -104,8 +108,9 @@ async function main() {
   // Poll the REST snapshot for every fixture that has a market or is upcoming,
   // so scores/phase stay correct without a live stream. Live mode only (needs
   // TxLINE credentials); skipped in replay/demo, which drives scores off the file.
+  const snapLogged = new Set<number>();
   async function pollSnapshots() {
-    if (CFG.replayFile) return;
+    if (!txlineReady) return; // needs TxLINE credentials; works in live OR replay if present
     const ids = new Set<number>();
     for (const m of registry.all()) ids.add(m.spec.fixtureId);
     for (const u of fixtureMeta.values()) if (u.fixtureId) ids.add(Number(u.fixtureId));
@@ -113,26 +118,70 @@ async function main() {
       const cur = fixtureScores.get(f);
       // don't clobber fresh live-stream data (< 30s old)
       if (cur && cur.source === "stream" && Date.now() - cur.lastSeen < 30_000) continue;
-      try { mergeScore(f, parseScorePayload(await txline.scoresSnapshot(f)), "snapshot"); }
-      catch { /* fixture not on the feed yet, or credentials unavailable */ }
+      try {
+        const raw = await txline.scoresSnapshot(f);
+        const parsed = parseScorePayload(raw);
+        mergeScore(f, parsed, "snapshot");
+        if (!snapLogged.has(f)) {
+          snapLogged.add(f);
+          const empty = parsed.home === undefined && parsed.away === undefined && parsed.phase === undefined;
+          console.log(`[snapshot] fixture ${f}: ${empty ? "NO score/phase parsed — inspect GET /admin/snapshot/" + f : `home=${parsed.home ?? "?"} away=${parsed.away ?? "?"} phase=${parsed.phase ?? "?"}`}`);
+        }
+      } catch (e: any) {
+        if (!snapLogged.has(f)) { snapLogged.add(f); console.warn(`[snapshot] fixture ${f} fetch failed: ${e.message}`); }
+      }
     }
   }
   void pollSnapshots();
   setInterval(() => void pollSnapshots(), 30_000);
 
-  // Score + derived match-state for a fixture, combining feed data with the
-  // registry's settlement status.
+  // Final scores from THIS node's recordings (terminal fixtures), so any match
+  // we recorded shows its score even with no live feed or snapshot. Cheap scan,
+  // cached ~30s. This is the same data the Archive tab uses.
+  let archiveCache: { at: number; map: Map<number, { h?: number; a?: number; final: boolean }> } = { at: 0, map: new Map() };
+  function archiveScores(): Map<number, { h?: number; a?: number; final: boolean }> {
+    if (Date.now() - archiveCache.at < 30_000) return archiveCache.map;
+    const map = new Map<number, { h?: number; a?: number; final: boolean }>();
+    try {
+      const dir = path.join(CFG.dataDir, "recordings");
+      if (fs.existsSync(dir)) {
+        for (const file of fs.readdirSync(dir).filter((f) => f.startsWith("scores-"))) {
+          for (const line of fs.readFileSync(path.join(dir, file), "utf8").split("\n")) {
+            if (!line.trim()) continue;
+            let e: any; try { e = JSON.parse(line); } catch { continue; }
+            const d = e.data ?? {};
+            const f = Number(d.fixtureId ?? d.fixture_id); if (!f) continue;
+            const s = parseScorePayload(d);
+            const r = map.get(f) ?? { final: false };
+            if (s.home !== undefined) r.h = s.home;
+            if (s.away !== undefined) r.a = s.away;
+            if (s.phase !== undefined && [5, 10, 13].includes(s.phase)) r.final = true;
+            map.set(f, r);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    archiveCache = { at: Date.now(), map };
+    return map;
+  }
+
+  // Score + derived match-state for a fixture. Sources, best-first: live feed
+  // (stream/snapshot) → this node's recorded archive (final scores). Combined
+  // with the registry's settlement status for state.
   const scoreOf = (fixtureId: number) => {
     const s = fixtureScores.get(fixtureId);
-    const mk = registry.all().find((m) => m.spec.fixtureId === fixtureId);
+    const arc = archiveScores().get(fixtureId);
+    const home = s?.home ?? arc?.h ?? null;
+    const away = s?.away ?? arc?.a ?? null;
     const settled = registry.all().some((m) => m.spec.fixtureId === fixtureId && m.status === "settled");
     const voided = registry.all().some((m) => m.spec.fixtureId === fixtureId && m.status === "voided");
+    const finishedByArchive = !!arc?.final;
     const state = matchState({
-      phase: s?.phase, home: s?.home, away: s?.away,
-      kickoff: meta(fixtureId)?.kickoff, settled, voided,
+      phase: s?.phase, home: home ?? undefined, away: away ?? undefined,
+      kickoff: meta(fixtureId)?.kickoff, settled: settled || finishedByArchive, voided,
     });
-    return { home: s?.home ?? null, away: s?.away ?? null, phase: s?.phase ?? null,
-      source: s?.source ?? null, state, updatedAt: s?.lastSeen ?? null };
+    const source = s?.source ?? (arc ? "archive" : null);
+    return { home, away, phase: s?.phase ?? null, source, state, updatedAt: s?.lastSeen ?? null };
   };
 
   const app = express();
@@ -356,12 +405,12 @@ async function main() {
             const d = e.data ?? {};
             const f = d.fixtureId ?? d.fixture_id; if (!f) continue;
             const r = done.get(f) ?? { fixtureId: f };
-            const h = d.homeScore ?? d.home_score ?? d.score?.home;
-            const a = d.awayScore ?? d.away_score ?? d.score?.away;
-            if (h != null) r.h = Number(h);
-            if (a != null) r.a = Number(a);
-            const ph = d.phase ?? d.gamePhase ?? d.phaseId;
-            if (ph != null && [5, 10, 13].includes(Number(ph))) { r.final = true; r.endedAt = e.receivedAt; }
+            // Same shared parser as everything else, so stat-array recordings
+            // (goals as key 1/2) yield scores here too — not just direct fields.
+            const s = parseScorePayload(d);
+            if (s.home !== undefined) r.h = s.home;
+            if (s.away !== undefined) r.a = s.away;
+            if (s.phase !== undefined && [5, 10, 13].includes(s.phase)) { r.final = true; r.endedAt = e.receivedAt; }
             done.set(f, r);
           }
         }
@@ -447,6 +496,18 @@ async function main() {
       const r = await txline.rawGet(apiPath);
       res.status(r.status).json(r.data);
     } catch (e: any) { res.status(502).json({ error: e.message }); }
+  });
+
+  // Debug why a fixture shows no score: the RAW snapshot + what we parsed out of
+  // it. If parsed is empty but raw has scores, paste raw so the field mapping in
+  // scores.ts can be extended.
+  app.get("/admin/snapshot/:id", async (req, res) => {
+    if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
+    const f = Number(req.params.id);
+    try {
+      const raw = await txline.scoresSnapshot(f);
+      res.json({ fixtureId: f, txlineReady, parsed: parseScorePayload(raw), archive: archiveScores().get(f) ?? null, raw });
+    } catch (e: any) { res.status(502).json({ error: e.message, txlineReady, archive: archiveScores().get(f) ?? null }); }
   });
 
   // SPA fallback: any non-API route serves the app shell.
