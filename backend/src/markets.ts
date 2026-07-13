@@ -15,6 +15,7 @@ export interface Receipt {
   proofRoot: string;      // eventStatRoot from the Merkle bundle
   maxTimestamp: number;   // proof window end (ms)
   settledTs?: number;     // on-chain settlement time (unix sec) — real, not staged
+  external?: boolean;     // settled by another cranker; this node didn't capture the proof bundle
 }
 
 export interface MarketRecord {
@@ -66,6 +67,35 @@ export class MarketRegistry {
   markVoided(id: number, txSig: string) {
     const m = this.markets.get(id); if (!m) return;
     m.status = "voided"; m.voidTx = txSig; this.save();
+  }
+
+  /**
+   * Align registry status with the ON-CHAIN market state (0 open, 1 settled,
+   * 2 voided). Settlement is permissionless, so the market can settle without
+   * this node's keeper doing it (manual crank, another instance, or a keeper
+   * restart between the settle tx and markSettled). Without this, the board
+   * shows "Settled 0" and "My stakes" never flips to WON/LOST even though the
+   * chain is settled. Returns true if it changed anything. Chain wins.
+   */
+  reconcileFromChain(id: number, chain: { state: number; outcomeYes: boolean; settledTs?: number; txSig?: string }): boolean {
+    const m = this.markets.get(id); if (!m) return false;
+    if (chain.state === 1 && m.status !== "settled") {
+      m.status = "settled";
+      m.receipt = m.receipt ?? {
+        outcomeYes: chain.outcomeYes,
+        txSig: chain.txSig ?? "",
+        seq: 0, proofRoot: "", maxTimestamp: 0,
+        settledTs: chain.settledTs, external: true,
+      };
+      this.save();
+      return true;
+    }
+    if (chain.state === 2 && m.status !== "voided") {
+      m.status = "voided"; m.voidTx = m.voidTx ?? (chain.txSig ?? "");
+      this.save();
+      return true;
+    }
+    return false;
   }
   nextId(): number {
     // Timestamp-based so independent instances (laptop, cloud) never collide

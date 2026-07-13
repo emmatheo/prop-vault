@@ -95,12 +95,35 @@ export class Keeper {
         });
         console.log(`[keeper] settled market ${id} (${m.spec.question}) tx=${sig}`);
       } catch (err: any) {
-        console.error(`[keeper] settle failed for market ${id}: ${err.message} — will retry via sweep`);
+        // Settlement is permissionless: another cranker (or a previous run of
+        // this keeper) may have already settled it. If the chain says settled,
+        // reconcile the registry instead of retrying forever.
+        const reconciled = await this.reconcileIfDone(id);
+        if (!reconciled) console.error(`[keeper] settle failed for market ${id}: ${err.message} — will retry via sweep`);
         this.inFlight.delete(id);
-        return;
+        if (!reconciled) return;
+        continue;
       }
       this.inFlight.delete(id);
     }
+  }
+
+  /** If the market is already settled/voided on-chain, sync the registry. */
+  private async reconcileIfDone(id: number): Promise<boolean> {
+    try {
+      const oc = await this.vault.fetchMarket(id);
+      const state = Number(oc.state);
+      if (state === 1 || state === 2) {
+        const changed = this.registry.reconcileFromChain(id, {
+          state,
+          outcomeYes: Boolean(oc.outcomeYes ?? oc.outcome_yes),
+          settledTs: Number(oc.settledTs ?? oc.settled_ts ?? 0),
+        });
+        if (changed) console.log(`[keeper] market ${id} already ${state === 1 ? "settled" : "voided"} on-chain — registry reconciled`);
+        return true;
+      }
+    } catch { /* fall through to retry */ }
+    return false;
   }
 
   /** Call every ~60s: retries missed settlements and submits eligible voids. */

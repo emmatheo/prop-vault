@@ -145,22 +145,55 @@ async function main() {
     if (hit && Date.now() - hit.ts < 10_000) return hit.data;
     const data = await vault.fetchPools(marketId);
     poolCache.set(marketId, { data, ts: Date.now() });
+    await reconcile(marketId, data); // chain is truth — flip registry if it settled elsewhere
     return data;
   }
 
+  // Best-effort recovery of the settlement tx signature for a market that was
+  // settled by someone other than this node, so the receipt still links to it.
+  async function recoverSettleTx(marketId: number): Promise<string> {
+    try {
+      if (!vault) return "";
+      const sigs = await vault.provider.connection.getSignaturesForAddress(
+        vault.marketPda(marketId), { limit: 1 });
+      return sigs[0]?.signature ?? "";
+    } catch { return ""; }
+  }
+
+  // Reconcile registry status with on-chain state (settled/voided) when the
+  // keeper wasn't the settler. Runs at most once per market per transition.
+  const reconciling = new Set<number>();
+  async function reconcile(marketId: number, data: any) {
+    if (!data) return;
+    const m = registry.get(marketId);
+    if (!m) return;
+    const settledOnChain = data.state === 1 && m.status !== "settled";
+    const voidedOnChain = data.state === 2 && m.status !== "voided";
+    if ((!settledOnChain && !voidedOnChain) || reconciling.has(marketId)) return;
+    reconciling.add(marketId);
+    try {
+      const txSig = await recoverSettleTx(marketId);
+      const changed = registry.reconcileFromChain(marketId, {
+        state: data.state, outcomeYes: data.outcomeYes, settledTs: data.settledTs, txSig,
+      });
+      if (changed) console.log(`[reconcile] market ${marketId} -> ${registry.get(marketId)?.status} from on-chain state (settled outside this keeper)`);
+    } finally { reconciling.delete(marketId); }
+  }
+
   app.get("/markets", async (_req, res) => {
-    const out = await Promise.all(registry.all().map(async (m) => ({
-      ...publicView(m),
-      pools: await pools(m.spec.marketId),
-      fixture: meta(m.spec.fixtureId),
-    })));
+    const out = await Promise.all(registry.all().map(async (m) => {
+      const p = await pools(m.spec.marketId);      // reconciles first
+      return { ...publicView(registry.get(m.spec.marketId) ?? m), pools: p, fixture: meta(m.spec.fixtureId) };
+    }));
     res.json(out);
   });
 
   app.get("/markets/:id", async (req, res) => {
-    const m = registry.get(Number(req.params.id));
-    if (!m) return res.status(404).json({ error: "not found" });
-    res.json({ ...publicView(m), pools: await pools(m.spec.marketId), fixture: meta(m.spec.fixtureId) });
+    const id = Number(req.params.id);
+    if (!registry.get(id)) return res.status(404).json({ error: "not found" });
+    const p = await pools(id);                      // reconciles first
+    const m = registry.get(id)!;
+    res.json({ ...publicView(m), pools: p, fixture: meta(m.spec.fixtureId) });
   });
 
   // Unsigned transactions: server builds, Phantom signs in the browser.
@@ -230,20 +263,29 @@ async function main() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.get("/markets/:id/receipt", (req, res) => {
-    const m = registry.get(Number(req.params.id));
-    if (!m) return res.status(404).json({ error: "not found" });
+  app.get("/markets/:id/receipt", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!registry.get(id)) return res.status(404).json({ error: "not found" });
+    await pools(id); // reconcile: a market settled by another cranker still yields a receipt
+    const m = registry.get(id)!;
     if (!m.receipt) return res.status(409).json({ error: "not settled yet" });
+    const r = m.receipt;
+    const marketAddr = vault ? vault.marketPda(id).toBase58() : null;
     res.json({
       question: m.spec.question,
-      outcome: m.receipt.outcomeYes ? "YES" : "NO",
-      settlementTx: m.receipt.txSig,
-      settledTs: m.receipt.settledTs ?? null,
-      explorer: `https://explorer.solana.com/tx/${m.receipt.txSig}?cluster=${CFG.network}`,
-      txlineSeq: m.receipt.seq,
-      merkleEventStatRoot: m.receipt.proofRoot,
-      proofWindowEndsMs: m.receipt.maxTimestamp,
-      note: "Outcome was proven on-chain via CPI into TxLINE validate_stat against the daily Merkle root. No oracle vote, no dispute window, no trust in this server.",
+      outcome: r.outcomeYes ? "YES" : "NO",
+      settlementTx: r.txSig || null,
+      settledTs: r.settledTs ?? null,
+      explorer: r.txSig
+        ? `https://explorer.solana.com/tx/${r.txSig}?cluster=${CFG.network}`
+        : (marketAddr ? `https://explorer.solana.com/address/${marketAddr}?cluster=${CFG.network}` : null),
+      txlineSeq: r.seq || null,
+      merkleEventStatRoot: r.proofRoot || null,
+      proofWindowEndsMs: r.maxTimestamp || null,
+      external: !!r.external,
+      note: r.external
+        ? "Settled on-chain by a permissionless cranker other than this node — that is the point: anyone can settle with the same public proof. This node didn't capture the Merkle bundle, but the on-chain market state and settlement transaction are authoritative and verifiable at the link above."
+        : "Outcome was proven on-chain via CPI into TxLINE validate_stat against the daily Merkle root. No oracle vote, no dispute window, no trust in this server.",
     });
   });
 
