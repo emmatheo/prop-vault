@@ -194,6 +194,7 @@ async function main() {
     setHeaders: (res, p) => { if (p.endsWith("index.html")) res.setHeader("Cache-Control", "no-cache"); },
   }));
 
+  const startedAt = new Date().toISOString();
   app.get("/health", (_req, res) => res.json({
     ok: true,
     mode: CFG.replayFile ? "replay" : "live",
@@ -202,6 +203,10 @@ async function main() {
     network: CFG.network,
     markets: registry.all().length,
     fixtureSource,
+    // Deploy verification: Render injects RENDER_GIT_COMMIT. If this doesn't
+    // match the latest commit on main, the service is running stale code.
+    commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
+    startedAt,
   }));
 
   // Every known fixture (with or without markets), each with its live/final
@@ -516,7 +521,14 @@ async function main() {
       (err) => err && res.status(404).end()));
 
   app.listen(CFG.port, () => console.log(`[api] listening on :${CFG.port}`));
-  await stream.start();
+  if (CFG.replayFile || txlineReady) {
+    await stream.start();
+  } else {
+    // No credentials in live mode: starting the SSE loop would just crash-retry
+    // with auth errors forever. Health reports the real reason instead.
+    streamStatus = "off — TxLINE onboarding failed (keypair.json/KEYPAIR_JSON missing?)";
+    console.warn(`[stream] ${streamStatus}`);
+  }
   if (keeper) { keeper.start(); setInterval(() => void keeper.sweep(), 60_000); }
 }
 
