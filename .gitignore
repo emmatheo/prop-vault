@@ -7,3 +7,4 @@ backend/data/markets.json
 target/
 dist/
 .anchor/
+backend/data/rehearsal-*.json

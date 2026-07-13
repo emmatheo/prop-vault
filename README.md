@@ -139,6 +139,14 @@ TxLINE onboarding and no deploy wallet required — so the board and live scores
 work offline for the demo video. Staking/settlement additionally need the
 deployed program + `backend/keypair.json` (see *Deploy your own*).
 
+**Rehearse the whole money path** against your devnet deployment before match
+day — two wallets stake opposite sides, the script waits for the real on-chain
+settlement, then the winner claims and USDC lands:
+```bash
+npm run rehearse -- --market <marketId>     # devnet; uses backend/keypair.json
+```
+Recording the demo? The shot-by-shot script is in [DEMO.md](DEMO.md).
+
 ## TxLINE endpoints used (submission requirement)
 
 - `POST /auth/guest/start` → on-chain `subscribe` (free tier, level 1) → `POST /api/token/activate`

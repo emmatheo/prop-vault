@@ -7,6 +7,7 @@
     "record": "tsx src/server.ts",
     "replay": "REPLAY_FILE=${REPLAY_FILE:-data/recordings/latest.jsonl} tsx src/server.ts",
     "seed": "tsx scripts/seed-markets.ts",
+    "rehearse": "tsx scripts/rehearse-settlement.ts",
     "build": "tsc"
   },
   "dependencies": {
