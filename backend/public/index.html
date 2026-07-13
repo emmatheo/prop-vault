@@ -19,7 +19,12 @@ body::before{content:"";position:fixed;inset:-30%;z-index:-2;pointer-events:none
 a{color:var(--violet);text-decoration:none}
 button{font-family:inherit;cursor:pointer;border:none}
 button:active{transform:scale(.97)}
-.wrap{max-width:640px;margin:0 auto;padding:0 14px 90px;position:relative;z-index:1}
+.wrap{max-width:1100px;margin:0 auto;padding:0 14px 90px;position:relative;z-index:1}
+.narrow{max-width:640px;margin:0 auto}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}
+.col{min-width:0}
+@media(max-width:920px){.cols{grid-template-columns:1fr}}
+.colempty{color:var(--mut);text-align:center;padding:30px 16px;border:1px dashed var(--line);border-radius:16px;margin:14px 0;line-height:1.7;font-size:13px}
 header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .bar{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:8px;padding:12px 14px;flex-wrap:wrap}
 .logo{font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:.6px}.logo b{color:var(--violet)}
@@ -34,7 +39,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .holdpill{background:rgba(52,226,122,.08);border:1px solid rgba(52,226,122,.35);color:var(--live);
  border-radius:10px;padding:8px 12px;font-family:var(--mono);font-size:12px;font-weight:700}
 /* hero */
-.hero{margin:18px 0 6px;padding:26px 22px;border:1px solid var(--line);border-radius:20px;position:relative;overflow:hidden;
+.hero{max-width:640px;margin:18px auto 6px;padding:26px 22px;border:1px solid var(--line);border-radius:20px;position:relative;overflow:hidden;
  background:linear-gradient(150deg,#0B0B10,#0D0D16 60%,#101020)}
 .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% -20%,rgba(124,92,255,.28),transparent 55%),radial-gradient(circle at -10% 120%,rgba(26,115,232,.2),transparent 50%);pointer-events:none}
 .hero h1{font-family:var(--disp);font-size:24px;line-height:1.2;position:relative}
@@ -48,7 +53,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .hs .v{font-family:var(--disp);font-weight:700;font-size:18px;margin-top:2px}
 .hint{background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.35);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--mut);margin:12px 0}
 .hint b{color:var(--txt)}
-.tabs{display:flex;gap:8px;padding:14px 0 4px}
+.wrap>.hint{max-width:640px;margin-left:auto;margin-right:auto}
+.tabs{display:flex;gap:8px;padding:14px 0 4px;max-width:640px;margin:0 auto}
 .tab{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:12px;padding:10px;font-weight:700;font-size:13px;position:relative;transition:color .2s,border-color .2s}
 .tab.on{background:var(--panel2);color:var(--txt);border-color:#3A3A52}
 .tab.on::after{content:"";position:absolute;left:25%;right:25%;bottom:-1px;height:2px;border-radius:2px;
@@ -213,7 +219,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.7"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.8"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -682,8 +688,8 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.t
 
 function render(){
   const v=$("#view");
-  if(tab==="mine"){v.innerHTML=renderMine();bind();return;}
-  if(tab==="archive"){v.innerHTML=renderArchive();return;}
+  if(tab==="mine"){v.innerHTML=`<div class="narrow">${renderMine()}</div>`;bind();return;}
+  if(tab==="archive"){v.innerHTML=`<div class="narrow">${renderArchive()}</div>`;return;}
   v.innerHTML=renderMatches();bind();
   if(goalFx!=null){
     const el=document.querySelector(`[data-fxid="${goalFx}"]`);
@@ -807,13 +813,18 @@ function renderMatches(){
     (st==="live"?buckets.live:st==="upcoming"?buckets.upcoming:buckets.finished).push({f,card,ko:u.kickoff||0});
   }
   if(!buckets.live.length&&!buckets.upcoming.length&&!buckets.finished.length)
-    return `<div class="empty"><b style="color:var(--txt)">No fixtures yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div>`;
-  const sec=(title,arr,asc)=>{if(!arr.length)return"";
-    arr.sort((a,b)=>asc?(a.ko-b.ko):(b.ko-a.ko));
-    return `<div class="sechead">${title} <span style="color:var(--mut);font-weight:600">· ${arr.length}</span></div>`+arr.map(x=>x.card).join("");};
-  return sec("● Live now",buckets.live,true)
-    +sec("Upcoming fixtures",buckets.upcoming,true)
-    +sec("Results",buckets.finished,false);
+    return `<div class="narrow"><div class="empty"><b style="color:var(--txt)">No fixtures yet.</b><br>Markets are created per fixture before kickoff — the board fills as matches are listed.</div></div>`;
+  const cards=(arr,asc)=>{arr.sort((a,b)=>asc?(a.ko-b.ko):(b.ko-a.ko));return arr.map(x=>x.card).join("");};
+  const head=(title,n)=>`<div class="sechead">${title}${n?` <span style="color:var(--mut);font-weight:600">· ${n}</span>`:""}</div>`;
+  // Live matches take the full-width stage; below, upcoming and finished sit
+  // side by side on desktop and stack on mobile (.cols media query).
+  const liveHtml=buckets.live.length
+    ?`<div class="narrow">${head("● Live now",buckets.live.length)}${cards(buckets.live,true)}</div>`:"";
+  const upCol=`<div class="col">${head("Upcoming fixtures",buckets.upcoming.length)}
+    ${buckets.upcoming.length?cards(buckets.upcoming,true):`<div class="colempty">No upcoming fixtures listed yet — they appear here as soon as they're added.</div>`}</div>`;
+  const resCol=`<div class="col">${head("Results",buckets.finished.length)}
+    ${buckets.finished.length?cards(buckets.finished,false):`<div class="colempty">Finished matches move here automatically with their final score.</div>`}</div>`;
+  return liveHtml+`<div class="cols">${upCol}${resCol}</div>`;
 }
 
 function marketRow(now,fxState,m){
