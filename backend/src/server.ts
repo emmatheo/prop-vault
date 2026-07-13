@@ -9,6 +9,11 @@
 //   POST /admin/markets          create a market from a template
 //                                { template: "homeWin"|"cornersOver"|"goalsOver",
 //                                  fixtureId, kickoffTs, label, team?, n? }
+//   GET  /admin/live-fixtures    fixtures currently emitting updates (seed source)
+//   GET  /admin/txline?path=...  authenticated TxLINE passthrough (keys stay server-side)
+//   all /admin routes require header  x-admin-key: <data/admin-key.txt>
+//
+//   seed the whole board in one command:  npm run seed   (backend/scripts/seed-markets.ts)
 //
 // run:  npm run dev            (live stream, recording on)
 //       REPLAY_FILE=data/recordings/scores-2026-07-10.jsonl npm run dev
@@ -27,7 +32,16 @@ import { MarketRegistry, homeWinProp, teamCornersOverProp, totalGoalsOverProp } 
 import { probeFixtureFeed } from "./fixtures.js";
 
 async function main() {
-  const txline = await new TxlineClient().init();
+  // Replay/demo mode replays a recording through the same pipeline and needs
+  // no TxLINE credentials or wallet — so the demo video and judges can run the
+  // whole app standalone. Live mode still onboards TxLINE as before.
+  const txline = new TxlineClient();
+  if (CFG.replayFile) {
+    console.log(`[demo-mode] replay from ${CFG.replayFile} — TxLINE onboarding skipped (no credentials needed)`);
+  } else {
+    try { await txline.init(); }
+    catch (e: any) { console.warn(`[txline] onboarding failed (${e.message}) — live feed unavailable; set REPLAY_FILE to run the demo without credentials`); }
+  }
   let vault: VaultClient | null = null;
   try { vault = new VaultClient(); }
   catch (e: any) { console.warn("[demo-mode] contract client disabled (" + e.message + ") — UI and live data run; staking is off until deploy."); }
@@ -63,6 +77,23 @@ async function main() {
 
   let streamStatus = "starting";
   stream.on("status", (s) => { streamStatus = s; console.log(`[stream] ${s}`); });
+
+  // Track which fixtures are currently emitting updates (for /admin/live-fixtures).
+  const liveFixtures = new Map<number, { home?: number; away?: number; phase?: number; lastSeen: number }>();
+  stream.on("score", (e) => {
+    const d = e.data ?? {};
+    const f = Number(d.fixtureId ?? d.fixture_id ?? d.fixture?.id);
+    if (!f) return;
+    const cur = liveFixtures.get(f) ?? { lastSeen: 0 };
+    const h = d.homeScore ?? d.home_score ?? d.score?.home;
+    const a = d.awayScore ?? d.away_score ?? d.score?.away;
+    const ph = d.phase ?? d.gamePhase ?? d.phaseId;
+    if (h != null) cur.home = Number(h);
+    if (a != null) cur.away = Number(a);
+    if (ph != null) cur.phase = Number(ph);
+    cur.lastSeen = Date.now();
+    liveFixtures.set(f, cur);
+  });
 
   const app = express();
   app.use(cors(), express.json());
@@ -300,6 +331,27 @@ async function main() {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // Fixtures currently producing live updates on this node's stream — the
+  // convenient source of (fixtureId, kickoff) for seeding markets on match day.
+  app.get("/admin/live-fixtures", (req, res) => {
+    if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
+    res.json([...liveFixtures.entries()]
+      .map(([fixtureId, v]) => ({ fixtureId, ...v, fixture: meta(fixtureId) }))
+      .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0)));
+  });
+
+  // Authenticated TxLINE passthrough: proxy an arbitrary /api path using this
+  // node's credentials, so operators can inspect the feed without leaking keys.
+  app.get("/admin/txline", async (req, res) => {
+    if (req.get("x-admin-key") !== CFG.adminKey) return res.status(401).json({ error: "bad admin key" });
+    const apiPath = String(req.query.path ?? "");
+    if (!apiPath.startsWith("/api/")) return res.status(400).json({ error: "path must start with /api/" });
+    try {
+      const r = await txline.rawGet(apiPath);
+      res.status(r.status).json(r.data);
+    } catch (e: any) { res.status(502).json({ error: e.message }); }
   });
 
   // SPA fallback: any non-API route serves the app shell.

@@ -2,6 +2,8 @@ node_modules/
 backend/keypair.json
 backend/.env
 backend/data/txline-credentials.json
+backend/data/admin-key.txt
+backend/data/markets.json
 target/
 dist/
 .anchor/
