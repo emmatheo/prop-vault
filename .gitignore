@@ -8,3 +8,4 @@ target/
 dist/
 .anchor/
 backend/data/rehearsal-*.json
+backend/data/guests.json

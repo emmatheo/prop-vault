@@ -183,6 +183,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   <button class="holdpill" id="holdPill" hidden title="Your wallet holdings — tap for My stakes"></button>
   <button class="btn btn-g icon" id="sndBtn" aria-label="Toggle sound">🔊</button>
   <button class="btn btn-g" id="faucetBtn" hidden>Get test USDC</button>
+  <button class="btn btn-g" id="guestBtn">Try as guest</button>
   <button class="btn btn-v" id="walletBtn">Connect wallet</button>
 </div></header>
 
@@ -190,6 +191,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   <div class="hero">
     <h1>Back your call.<br><b>Settled at the whistle.</b></h1>
     <p>USDC prop markets on live football, resolved by cryptographic proof on Solana the moment the match ends — no oracle vote, no dispute window, no trust required.</p>
+    <p style="color:var(--live);margin-top:6px"><b>No wallet needed</b> — judges can test the full stake→settle→claim flow as a guest. The server signs real devnet transactions on your behalf.</p>
     <div class="hstats">
       <div class="hs"><div class="k">Markets</div><div class="v" id="hMkts">0</div></div>
       <div class="hs"><div class="k">Settled</div><div class="v" id="hSet">0</div></div>
@@ -219,12 +221,13 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.8"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.9"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
 const FEE=0.01, TERMINAL=[5,10,13];
 let markets=[],archive=[],upcoming=[],health=null,tab="matches",wallet=null,walletProvider=null,walletName=null,positions=[],holdings=null,live={},web3=null,goalFx=null;
+let isGuest=false,guestId=localStorage.getItem("pv-guest")||null;
 
 /* ================= sound: everything synthesized in-browser =================
    No audio files, no CDN samples — a procedural far-crowd ambience (filtered
@@ -494,10 +497,30 @@ let lastWalletError=null;
 const withTimeout=(p,ms)=>Promise.race([p,
   new Promise((_,rej)=>setTimeout(()=>rej(new Error("no response after "+Math.round(ms/1000)+"s — the wallet never showed its popup. It is probably locked (click its toolbar icon and unlock), or this provider is a dead stub from another extension")),ms))]);
 function setDisconnected(){
-  wallet=null;walletProvider=null;walletName=null;positions=[];holdings=null;
-  $("#walletBtn").textContent="Connect wallet";$("#faucetBtn").hidden=true;
+  wallet=null;walletProvider=null;walletName=null;isGuest=false;positions=[];holdings=null;
+  $("#walletBtn").textContent="Connect wallet";$("#guestBtn").hidden=false;
+  $("#guestBtn").textContent="Try as guest";$("#faucetBtn").hidden=true;
   updateHoldPill();render();
 }
+
+/* ---- Judge Mode: no wallet, backend signs real devnet txs for the guest ---- */
+$("#guestBtn").onclick=async()=>{
+  if(isGuest){setDisconnected();return;}
+  const b=$("#guestBtn");b.disabled=true;b.textContent="Starting guest…";
+  try{
+    const r=await postJ("/guest/session",{guestId});
+    guestId=r.guestId;localStorage.setItem("pv-guest",guestId);
+    isGuest=true;wallet=r.address;walletName="Guest";walletProvider=null;
+    b.textContent="Exit guest";
+    $("#walletBtn").textContent="Connect wallet";
+    $("#faucetBtn").hidden=false;
+    toast("Guest mode — the server signs real devnet transactions for you. No wallet needed.","ok");
+    refresh();
+  }catch(e){
+    toast("Guest mode: "+(e.message||"unavailable")+(String(e.message||"").includes("deploy")?" (needs the deployed contract).":""),"err");
+  }
+  b.disabled=false;
+};
 async function connectTo(w){
   closeSheet();
   const btn=$("#walletBtn");btn.disabled=true;btn.textContent=`Connecting ${w.name}…`;
@@ -514,8 +537,9 @@ async function connectTo(w){
       walletProvider={p:w.p};wallet=pk.toString();
       try{w.p.on?.("disconnect",setDisconnected);}catch{}
     }
-    walletName=w.name;
+    walletName=w.name;isGuest=false;
     btn.textContent=wallet.slice(0,4)+"…"+wallet.slice(-4);
+    $("#guestBtn").hidden=true;
     $("#faucetBtn").hidden=health?.network!=="devnet";
     toast(`${esc(w.name)} connected.`,"ok");refresh();
   }catch(e){
@@ -635,9 +659,11 @@ $("#walletBtn").onclick=async()=>{
 };
 $("#faucetBtn").onclick=async()=>{
   if(!wallet)return;$("#faucetBtn").disabled=true;$("#faucetBtn").textContent="Minting…";
-  try{const r=await postJ("/faucet",{address:wallet});
-    sfx.cash();
-    toast(`100 test USDC sent. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${r.tx}?cluster=devnet">View tx</a>`,"ok");
+  try{
+    if(isGuest){const r=await postJ("/guest/faucet",{guestId});sfx.cash();
+      toast(`Topped up — ${fmt(r.usdc)} test USDC now in your guest wallet.`,"ok");
+    }else{const r=await postJ("/faucet",{address:wallet});sfx.cash();
+      toast(`100 test USDC sent. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${r.tx}?cluster=devnet">View tx</a>`,"ok");}
     setTimeout(refresh,2000);
   }catch(e){toast("Faucet: "+e.message,"err");}
   $("#faucetBtn").disabled=false;$("#faucetBtn").textContent="Get test USDC";
@@ -853,9 +879,9 @@ function marketRow(now,fxState,m){
 
 /* ---- my stakes: holdings + clear WON/LOST verdicts ---- */
 function renderMine(){
-  if(!wallet)return `<div class="empty">Connect your wallet to see stakes, claim wins, and collect refunds.</div>`;
+  if(!wallet)return `<div class="empty">Connect a wallet — or click <b>Try as guest</b> — to see stakes, claim wins, and collect refunds.</div>`;
   const hold=holdings?`<div class="holdcard">
-    <div><div class="k">Wallet holdings</div><div class="v">${fmt(holdings.usdc)} <span class="unit">USDC</span></div></div>
+    <div><div class="k">${isGuest?"Guest wallet · server-signed":"Wallet holdings"}</div><div class="v">${fmt(holdings.usdc)} <span class="unit">USDC</span></div></div>
     <div class="solv">◎ ${fmt(holdings.sol)} SOL<br>${wallet.slice(0,4)}…${wallet.slice(-4)}</div>
   </div>`:"";
   if(!positions.length)return hold+`<div class="empty">No stakes yet — pick a market and back your call.</div>`;
@@ -930,7 +956,7 @@ function bind(){
 }
 function openSheet(marketId,sideYes){
   const m=markets.find(x=>x.marketId===marketId);if(!m)return;
-  if(!wallet){toast("Connect your wallet first — top right.","err");return;}
+  if(!wallet){toast("Connect a wallet — or click <b>Try as guest</b> (no wallet needed).","err");return;}
   const p=m.pools||{yesPool:0,noPool:0};
   const demo=health?.contract&&String(health.contract).includes("demo");
   $("#sheet").innerHTML=`<h3>Stake ${sideYes?"YES":"NO"} — ${esc(m.question)}</h3>
@@ -953,22 +979,26 @@ function openSheet(marketId,sideYes){
   $("#confirmBtn").onclick=async()=>{
     const a=Number(amt.value);
     if(!(a>0)){toast("Enter a stake amount above zero.","err");return;}
-    $("#confirmBtn").disabled=true;$("#confirmBtn").textContent="Waiting for wallet…";
-    try{const {tx}=await postJ("/tx/stake",{address:wallet,marketId,sideYes,amount:a});
-      const sig=await signAndSend(tx);
+    $("#confirmBtn").disabled=true;$("#confirmBtn").textContent=isGuest?"Signing on server…":"Waiting for wallet…";
+    try{
+      let sig;
+      if(isGuest){const r=await postJ("/guest/stake",{guestId,marketId,sideYes,amount:a});sig=r.tx;}
+      else{const {tx}=await postJ("/tx/stake",{address:wallet,marketId,sideYes,amount:a});sig=await signAndSend(tx);}
       sfx.stake();
-      toast(`Stake placed. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
+      toast(`Stake placed${isGuest?" (guest)":""}. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
       closeSheet();setTimeout(refresh,2500);
     }catch(e){toast("Stake failed: "+(e.message||"wallet rejected"),"err");
       $("#confirmBtn").disabled=false;$("#confirmBtn").textContent=`Stake ${sideYes?"YES":"NO"}`;}};
 }
 function closeSheet(){$("#sheet").classList.remove("open");$("#sheetBack").classList.remove("open");}
 async function claim(marketId,btn){
-  btn.disabled=true;btn.textContent="Waiting for wallet…";
-  try{const {tx}=await postJ("/tx/claim",{address:wallet,marketId});
-    const sig=await signAndSend(tx);
+  btn.disabled=true;btn.textContent=isGuest?"Signing on server…":"Waiting for wallet…";
+  try{
+    let sig;
+    if(isGuest){const r=await postJ("/guest/claim",{guestId,marketId});sig=r.tx;}
+    else{const {tx}=await postJ("/tx/claim",{address:wallet,marketId});sig=await signAndSend(tx);}
     sfx.cash();
-    toast(`Paid out. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
+    toast(`Paid out${isGuest?" (guest)":""}. <a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${sig}?cluster=${health.network}">View tx</a>`,"ok");
     setTimeout(refresh,2500);
   }catch(e){toast("Claim failed: "+(e.message||"wallet rejected"),"err");btn.disabled=false;btn.textContent="Claim payout";}
 }

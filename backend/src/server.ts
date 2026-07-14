@@ -22,6 +22,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import cors from "cors";
 import { CFG } from "./config.js";
 import { TxlineClient } from "./txline/client.js";
@@ -339,6 +340,106 @@ async function main() {
       const { PublicKey } = await import("@solana/web3.js");
       const tx = await vault.buildClaimTx(new PublicKey(address), Number(marketId));
       res.json({ tx });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ---- Judge Mode: wallet-free guest the backend signs for (devnet only) ----
+  // Compliance with the rule that judges must be able to test WITHOUT a
+  // blockchain wallet. Each guest gets a fresh server-held keypair, funded
+  // with a little SOL (rent) + test USDC; the backend signs real devnet stake
+  // and claim transactions on their behalf. Private keys never leave the server.
+  const { Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } = await import("@solana/web3.js");
+  const spl = await import("@solana/spl-token");
+  const GUESTS_FILE = path.join(CFG.dataDir, "guests.json");
+  const guests = new Map<string, InstanceType<typeof Keypair>>();
+  try {
+    const saved = JSON.parse(fs.readFileSync(GUESTS_FILE, "utf8"));
+    for (const [id, sk] of Object.entries(saved)) guests.set(id, Keypair.fromSecretKey(Uint8Array.from(sk as number[])));
+  } catch { /* none yet */ }
+  const saveGuests = () => {
+    try {
+      fs.mkdirSync(CFG.dataDir, { recursive: true });
+      const obj: Record<string, number[]> = {};
+      for (const [id, kp] of guests) obj[id] = Array.from(kp.secretKey);
+      fs.writeFileSync(GUESTS_FILE, JSON.stringify(obj), { mode: 0o600 });
+    } catch (e: any) { console.warn("[guest] persist failed:", e.message); }
+  };
+
+  async function fundGuest(pubkey: InstanceType<typeof PublicKey>) {
+    if (!vault) throw new Error("contract not deployed");
+    const conn = vault.provider.connection;
+    // 1) SOL for position-account rent + a buffer (fees are paid by the operator).
+    if (await conn.getBalance(pubkey) < 0.03 * 1e9) {
+      const tx = new Transaction().add(SystemProgram.transfer({
+        fromPubkey: vault.payer.publicKey, toPubkey: pubkey, lamports: 0.05 * 1e9 }));
+      await sendAndConfirmTransaction(conn, tx, [vault.payer]);
+    }
+    // 2) 100 test USDC (operator wallet is the mint authority).
+    const mint = new PublicKey(CFG.solana.usdcMint);
+    const ata = await spl.getOrCreateAssociatedTokenAccount(conn, vault.payer, mint, pubkey);
+    await spl.mintTo(conn, vault.payer, mint, ata.address, vault.payer, 100_000_000);
+  }
+  async function guestBalances(pubkey: InstanceType<typeof PublicKey>) {
+    const conn = vault!.provider.connection;
+    const sol = (await conn.getBalance(pubkey)) / 1e9;
+    let usdc = 0;
+    try {
+      const ata = spl.getAssociatedTokenAddressSync(new PublicKey(CFG.solana.usdcMint), pubkey);
+      usdc = Number((await conn.getTokenAccountBalance(ata)).value.uiAmount ?? 0);
+    } catch {}
+    return { sol, usdc };
+  }
+  const guestGuard = (res: express.Response) => {
+    if (!vault) { res.status(503).json({ error: "guest mode opens when the contract finishes deploying" }); return false; }
+    if (CFG.network !== "devnet") { res.status(403).json({ error: "guest mode is devnet-only" }); return false; }
+    return true;
+  };
+
+  // Start (or resume) a guest session — funds a fresh server-held wallet.
+  app.post("/guest/session", async (req, res) => {
+    if (!guestGuard(res)) return;
+    try {
+      let id: string = req.body?.guestId;
+      let kp = id && guests.get(id);
+      if (!kp) { id = crypto.randomUUID(); kp = Keypair.generate(); guests.set(id, kp); saveGuests(); }
+      await fundGuest(kp.publicKey);
+      res.json({ guestId: id, address: kp.publicKey.toBase58(), guest: true, ...(await guestBalances(kp.publicKey)) });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Top up an existing guest with more test USDC.
+  app.post("/guest/faucet", async (req, res) => {
+    if (!guestGuard(res)) return;
+    const kp = guests.get(req.body?.guestId);
+    if (!kp) return res.status(404).json({ error: "unknown guest session" });
+    try { await fundGuest(kp.publicKey); res.json({ ok: true, ...(await guestBalances(kp.publicKey)) }); }
+    catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Backend-signed stake — the whole point: a real devnet stake, no wallet.
+  app.post("/guest/stake", async (req, res) => {
+    if (!guestGuard(res)) return;
+    try {
+      const { guestId, marketId, sideYes, amount } = req.body;
+      const kp = guests.get(guestId);
+      if (!kp) return res.status(404).json({ error: "unknown guest session — start one first" });
+      if (typeof sideYes !== "boolean" || !(amount > 0)) return res.status(400).json({ error: "need sideYes:boolean, amount>0" });
+      const m = registry.get(Number(marketId));
+      if (!m || m.status !== "open") return res.status(409).json({ error: "market is not open" });
+      if (Date.now() / 1000 >= m.spec.lockTs) return res.status(409).json({ error: "market locked at kickoff" });
+      const sig = await vault!.stake(Number(marketId), sideYes, Number(amount), kp);
+      res.json({ ok: true, tx: sig });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Backend-signed claim/refund for a guest.
+  app.post("/guest/claim", async (req, res) => {
+    if (!guestGuard(res)) return;
+    try {
+      const kp = guests.get(req.body?.guestId);
+      if (!kp) return res.status(404).json({ error: "unknown guest session" });
+      const sig = await vault!.claim(Number(req.body?.marketId), kp);
+      res.json({ ok: true, tx: sig });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
