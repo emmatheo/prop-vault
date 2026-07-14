@@ -191,7 +191,6 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   <div class="hero">
     <h1>Back your call.<br><b>Settled at the whistle.</b></h1>
     <p>USDC prop markets on live football, resolved by cryptographic proof on Solana the moment the match ends — no oracle vote, no dispute window, no trust required.</p>
-    <p style="color:var(--live);margin-top:6px"><b>No wallet needed</b> — judges can test the full stake→settle→claim flow as a guest. The server signs real devnet transactions on your behalf.</p>
     <div class="hstats">
       <div class="hs"><div class="k">Markets</div><div class="v" id="hMkts">0</div></div>
       <div class="hs"><div class="k">Settled</div><div class="v" id="hSet">0</div></div>
@@ -221,7 +220,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.9"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.10"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
