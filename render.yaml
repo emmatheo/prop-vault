@@ -7,7 +7,10 @@ services:
     runtime: node
     rootDir: backend
     plan: starter # has a persistent disk; 'free' works but loses markets.json on restarts and sleeps when idle
-    buildCommand: npm install
+    # Render sets NODE_ENV=production, which makes `npm install` skip
+    # devDependencies. tsx (the runtime) now lives in dependencies so it is
+    # always installed; --include=dev is belt-and-suspenders for local parity.
+    buildCommand: npm install --include=dev
     startCommand: npx tsx src/server.ts
     healthCheckPath: /health
     disk:

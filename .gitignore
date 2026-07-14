@@ -1,5 +1,6 @@
 node_modules/
 backend/keypair.json
+backend/data/keypair.json
 backend/.env
 backend/data/txline-credentials.json
 backend/data/admin-key.txt
