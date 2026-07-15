@@ -24,3 +24,5 @@ services:
         value: devnet
       - key: KEYPAIR_JSON
         sync: false # paste the [12,34,...] array from backend/keypair.json in the dashboard
+      - key: AUTOSEED
+        value: "1" # fill the board from upcoming.json on boot so it's never "Markets 0"

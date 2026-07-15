@@ -34,7 +34,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .btn{border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px}
 .btn-v{background:linear-gradient(120deg,var(--violet),#5a3fd6);color:#fff;box-shadow:0 4px 18px rgba(124,92,255,.35)}
 .btn-g{background:transparent;color:var(--mut);border:1px solid var(--line)}
-.btn.icon{padding:8px 10px;font-size:15px;line-height:1}
+.btn.icon{padding:8px 10px;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.btn.icon svg{display:block}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .holdpill{background:rgba(52,226,122,.08);border:1px solid rgba(52,226,122,.35);color:var(--live);
  border-radius:10px;padding:8px 12px;font-family:var(--mono);font-size:12px;font-weight:700}
@@ -181,7 +182,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   <span class="pill replay" id="replayPill" hidden>DEMO REPLAY</span>
   <span class="spacer"></span>
   <button class="holdpill" id="holdPill" hidden title="Your wallet holdings — tap for My stakes"></button>
-  <button class="btn btn-g icon" id="sndBtn" aria-label="Toggle sound">🔊</button>
+  <button class="btn btn-g icon" id="sndBtn" aria-label="Toggle sound"></button>
   <button class="btn btn-g" id="faucetBtn" hidden>Get test USDC</button>
   <button class="btn btn-g" id="guestBtn">Try as guest</button>
   <button class="btn btn-v" id="walletBtn">Connect wallet</button>
@@ -220,7 +221,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.10"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-13.11"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -281,10 +282,13 @@ document.addEventListener("pointerdown",e=>{
   if(!gestured){gestured=true;if(SFX.on)startAmbient();}
   if(e.target.closest("button"))sfx.tick();
 },{passive:true});
-$("#sndBtn").textContent=SFX.on?"🔊":"🔇";
+// Inline SVG speaker icons — render identically on every OS (emoji do not).
+const SND_ON=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`;
+const SND_OFF=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`;
+$("#sndBtn").innerHTML=SFX.on?SND_ON:SND_OFF;
 $("#sndBtn").onclick=()=>{
   SFX.on=!SFX.on;localStorage.setItem("pv-sound",SFX.on?"on":"off");
-  $("#sndBtn").textContent=SFX.on?"🔊":"🔇";
+  $("#sndBtn").innerHTML=SFX.on?SND_ON:SND_OFF;
   if(SFX.on){startAmbient();toast("Sound on — stadium ambience synthesized live in your browser.","ok");}
   else stopAmbient();
 };

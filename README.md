@@ -126,6 +126,11 @@ HOST=https://<your-host> npm run seed      # against a deployed backend
 npm run seed -- --file live                # seed from fixtures currently live on the feed
 ```
 
+**No shell? Auto-seed on boot.** Set env var `AUTOSEED=1` (already in
+[`render.yaml`](render.yaml)) and the server fills its own board from
+`upcoming.json` at startup — three markets per fixture, idempotent — so a fresh
+deploy never shows "Markets 0". No admin key, no curl.
+
 ## Run the demo in 60 seconds (no wallet, no credentials)
 
 ```bash

@@ -78,6 +78,37 @@ async function main() {
   };
   void enrichFixtures();
   setInterval(() => void enrichFixtures(), 6 * 3600_000);
+
+  // Auto-seed: set AUTOSEED=1 and the board fills itself on boot from
+  // upcoming.json — three markets per fixture — so a fresh deploy never shows
+  // "Markets 0". Idempotent: only creates what's missing. No shell, no admin
+  // key. On-chain when the contract is connected, registry-only in demo mode.
+  async function autoSeed() {
+    if (!process.env.AUTOSEED) return;
+    const templates: Array<[string, (id: number, f: number, k: number) => any, RegExp]> = [
+      ["homeWin", (id, f, k) => homeWinProp(id, f, k, "Home to win?"), /win|beat/i],
+      ["goalsOver", (id, f, k) => totalGoalsOverProp(id, f, k, 2, "Over 2 total goals?"), /total goals/i],
+      ["cornersOver", (id, f, k) => teamCornersOverProp(id, f, k, 1, 4, "Team 1 over 4 corners?"), /corners/i],
+    ];
+    let made = 0;
+    for (const u of fixtureMeta.values()) {
+      const fixtureId = Number(u.fixtureId);
+      if (!fixtureId) continue;
+      const kickoff = Number(u.kickoff) > 0 ? Number(u.kickoff) : Math.floor(Date.now() / 1000) + 3600;
+      for (const [, build, rx] of templates) {
+        if (registry.all().some((m) => m.spec.fixtureId === fixtureId && rx.test(m.spec.question))) continue;
+        const spec = build(registry.nextId(), fixtureId, kickoff);
+        try {
+          if (vault) { const tx = await vault.createMarket(spec); registry.add(spec, tx); }
+          else registry.add(spec);
+          made++;
+        } catch (e: any) { console.warn(`[autoseed] ${spec.question} fx${fixtureId}: ${e.message}`); }
+      }
+    }
+    if (made) console.log(`[autoseed] created ${made} market(s); board now has ${registry.all().length}`);
+  }
+  void autoSeed();
+
   const stream = makeStream(txline);
   const keeper = vault ? new Keeper(stream, txline, vault, registry) : null;
 
