@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "start": "tsx src/server.ts",
     "dev": "tsx src/server.ts",
     "record": "tsx src/server.ts",
     "replay": "REPLAY_FILE=${REPLAY_FILE:-data/recordings/latest.jsonl} tsx src/server.ts",
