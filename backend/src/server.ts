@@ -167,6 +167,39 @@ async function main() {
   void pollSnapshots();
   setInterval(() => void pollSnapshots(), 30_000);
 
+  // Hands-off live markets: when the contract is connected and AUTO_MARKETS is
+  // set, the server opens a "Home to win?" market on any REAL fixture that
+  // appears live on the feed (skipping the upcoming.json placeholders) and has
+  // no market yet. The keeper then settles it by proof at full time — so a
+  // deployment produces real settlements with zero commands. A short stake
+  // window keeps it usable by a judge who arrives mid-match.
+  const PLACEHOLDER_FIXTURES = new Set([990001, 990002]);
+  const autoMarketInFlight = new Set<number>();
+  async function autoLiveMarkets() {
+    if (!process.env.AUTO_MARKETS || !vault) return;
+    const now = Math.floor(Date.now() / 1000);
+    for (const [f, s] of fixtureScores) {
+      if (PLACEHOLDER_FIXTURES.has(f) || autoMarketInFlight.has(f)) continue;
+      const isLive = (s.phase !== undefined && ![5, 10, 13].includes(s.phase)) || s.home !== undefined || s.away !== undefined;
+      const isTerminal = s.phase !== undefined && [5, 10, 13].includes(s.phase);
+      if (!isLive || isTerminal) continue; // only open markets on in-play fixtures
+      if (registry.all().some((m) => m.spec.fixtureId === f)) continue; // already has a market
+      autoMarketInFlight.add(f);
+      try {
+        const spec = homeWinProp(registry.nextId(), f, now, "Home to win?");
+        spec.lockTs = now + 300;        // 5-minute stake window
+        spec.settleAfterTs = now + 360; // settle-eligible shortly after; passed by full time
+        spec.voidAfterTs = now + 48 * 3600;
+        const tx = await vault.createMarket(spec);
+        registry.add(spec, tx);
+        console.log(`[auto-markets] opened market ${spec.marketId} on live fixture ${f} (tx ${tx.slice(0, 8)}…)`);
+      } catch (e: any) {
+        console.warn(`[auto-markets] fixture ${f}: ${e.message}`);
+      } finally { autoMarketInFlight.delete(f); }
+    }
+  }
+  setInterval(() => void autoLiveMarkets(), 20_000);
+
   // Final scores from THIS node's recordings (terminal fixtures), so any match
   // we recorded shows its score even with no live feed or snapshot. Cheap scan,
   // cached ~30s. This is the same data the Archive tab uses.

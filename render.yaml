@@ -26,3 +26,5 @@ services:
         sync: false # paste the [12,34,...] array from backend/keypair.json in the dashboard
       - key: AUTOSEED
         value: "1" # fill the board from upcoming.json on boot so it's never "Markets 0"
+      - key: AUTO_MARKETS
+        value: "1" # open a market on any REAL fixture that goes live, so the keeper settles it — hands-off
