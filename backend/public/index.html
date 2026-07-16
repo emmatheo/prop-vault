@@ -52,6 +52,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 .hs{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .hs .k{color:var(--mut);font-size:10px;letter-spacing:1px;text-transform:uppercase}
 .hs .v{font-family:var(--disp);font-weight:700;font-size:18px;margin-top:2px}
+.hs .sub2{font-size:9px;color:var(--mut);margin-top:1px;letter-spacing:.5px;min-height:11px}
+.hs .sub2 b{color:var(--gold)}
 .hint{background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.35);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--mut);margin:12px 0}
 .hint b{color:var(--txt)}
 .wrap>.hint{max-width:640px;margin-left:auto;margin-right:auto}
@@ -193,8 +195,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
     <h1>Back your call.<br><b>Settled at the whistle.</b></h1>
     <p>USDC prop markets on live football. Resolved by cryptographic proof on Solana the instant the match ends — no oracle, no dispute window, no trust required.</p>
     <div class="hstats">
-      <div class="hs"><div class="k">Markets</div><div class="v" id="hMkts">0</div></div>
-      <div class="hs"><div class="k">Settled</div><div class="v" id="hSet">0</div></div>
+      <div class="hs"><div class="k">Markets</div><div class="v" id="hMkts">0</div><div class="sub2" id="hOpen"></div></div>
+      <div class="hs"><div class="k">Settled</div><div class="v" id="hSet">0</div><div class="sub2" id="hVoid"></div></div>
       <div class="hs"><div class="k">Settlement</div><div class="v" style="color:var(--live)">seconds</div></div>
     </div>
   </div>
@@ -219,7 +221,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-15.12"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-15.13"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -424,6 +426,10 @@ async function refresh(){
   }
   countUp($("#hMkts"),markets.length);
   countUp($("#hSet"),markets.filter(m=>m.status==="settled").length);
+  const openN=markets.filter(m=>m.status==="open").length;
+  const voidN=markets.filter(m=>m.status==="voided").length;
+  $("#hOpen").innerHTML=openN?`${openN} open`:"";
+  $("#hVoid").innerHTML=voidN?`<b>${voidN} voided</b> (refunded)`:"";
   updateHoldPill();
   detectSettlements();
   render();
