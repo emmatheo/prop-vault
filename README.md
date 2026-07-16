@@ -131,6 +131,14 @@ npm run seed -- --file live                # seed from fixtures currently live o
 `upcoming.json` at startup — three markets per fixture, idempotent — so a fresh
 deploy never shows "Markets 0". No admin key, no curl.
 
+**One real settlement, one command.** During a live match, point this at your
+deployed backend and walk away — it finds the first real fixture on the feed,
+opens a market, optionally stakes as a guest, then waits for the keeper to
+settle it by proof and prints the receipt:
+```bash
+HOST=https://<your-host> ADMIN_KEY=<key> npm run autosettle -- --stake 5
+```
+
 ## Run the demo in 60 seconds (no wallet, no credentials)
 
 ```bash
