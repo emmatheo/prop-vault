@@ -152,14 +152,32 @@ npm run rehearse -- --market <marketId>     # devnet; uses backend/keypair.json
 ```
 Recording the demo? The shot-by-shot script is in [DEMO.md](DEMO.md).
 
-## TxLINE endpoints used (submission requirement)
+## TxLINE (TxODDS) endpoints used
 
-- `POST /auth/guest/start` → on-chain `subscribe` (free tier, level 1) → `POST /api/token/activate`
-- `GET /api/scores/stream` (SSE live scores)
-- `GET /api/fixtures/snapshot` (upcoming fixture metadata → market creation)
-- `GET /api/scores/snapshot/{fixtureId}`
-- `GET /api/scores/updates/{epochDay}/{hour}/{interval}`
-- `GET /api/scores/stat-validation` → Merkle proof bundle → CPI `validate_stat`
+Auth — free World Cup tier (service level 1, ~60s delay), no API key to paste:
+- `POST /auth/guest/start` → guest JWT
+- on-chain `subscribe(1, weeks)` → txSig  (free tier: no TxL token needed)
+- `POST /api/token/activate` → apiToken; every call then sends `Authorization: Bearer <jwt>` + `X-Api-Token`
+
+Data the free tier serves (all verified in code):
+- `GET /api/scores/stream` — SSE live scores (fixtureId, stat key/value pairs, phase)
+- `GET /api/scores/snapshot/{fixtureId}` — current/final state for one fixture
+- `GET /api/scores/updates/{epochDay}/{hour}/{interval}` — update buckets
+- `GET /api/scores/stat-validation` — Merkle proof bundle → CPI `validate_stat` (settlement)
+
+What the free tier does **not** serve: a fixtures listing. The token has no
+access to `/api/fixtures*`, so team names and kickoffs are not available from
+the API — they come from `upcoming.json`, and real fixture IDs are discovered
+from the score stream itself (`GET /admin/live-fixtures`). Scores arrive as
+`ScoreStat{key,value,period}` pairs (goals = key 1 / key 2 at period 0), not a
+`homeScore` field — the parser in `src/scores.ts` handles this.
+
+**Why a market settles (or doesn't):** the keeper settles a market only when
+the score stream reports a terminal phase (5/10/13) for that market's
+`fixtureId`. The placeholder fixtures in `upcoming.json` (990001/990002) never
+appear in the live feed, so markets on them never settle. To get a real
+settlement, create a market on a **real** fixtureId that is live now:
+`GET /admin/live-fixtures` lists them, or `npm run seed -- --file live`.
 
 ## Deploy your own
 

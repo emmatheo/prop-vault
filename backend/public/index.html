@@ -191,7 +191,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="wrap">
   <div class="hero">
     <h1>Back your call.<br><b>Settled at the whistle.</b></h1>
-    <p>USDC prop markets on live football, resolved by cryptographic proof on Solana the moment the match ends — no oracle vote, no dispute window, no trust required.</p>
+    <p>USDC prop markets on live football. Resolved by cryptographic proof on Solana the instant the match ends — no oracle, no dispute window, no trust required.</p>
     <div class="hstats">
       <div class="hs"><div class="k">Markets</div><div class="v" id="hMkts">0</div></div>
       <div class="hs"><div class="k">Settled</div><div class="v" id="hSet">0</div></div>
@@ -200,11 +200,9 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
   </div>
 
   <div id="phantomHint" class="hint" hidden>
-    <b>No Solana wallet detected.</b> Browse freely; to stake, install
-    <a href="https://phantom.app" target="_blank" rel="noopener">Phantom</a>,
-    <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or
-    <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>.
-    On mobile, open this page inside your wallet app's built-in browser. Devnet testing: wallet Settings → Developer settings → Testnet mode.
+    <b>No wallet?</b> Click <b>Try as guest</b> to test everything with no wallet at all.
+    Or install <a href="https://phantom.app" target="_blank" rel="noopener">Phantom</a> /
+    <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> — on mobile, open this page in the wallet app's browser.
   </div>
 
   <div class="tabs">
@@ -221,7 +219,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(5,5,7,.9);backdrop-filte
 <div class="toasts" id="toasts"></div>
 
 <script type="module">
-const BUILD="2026-07-13.11"; // shown in diagnostics; bump when the frontend changes
+const BUILD="2026-07-15.12"; // shown in diagnostics; bump when the frontend changes
 console.log("[propvault] frontend build",BUILD);
 const $=s=>document.querySelector(s);
 const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -289,7 +287,7 @@ $("#sndBtn").innerHTML=SFX.on?SND_ON:SND_OFF;
 $("#sndBtn").onclick=()=>{
   SFX.on=!SFX.on;localStorage.setItem("pv-sound",SFX.on?"on":"off");
   $("#sndBtn").innerHTML=SFX.on?SND_ON:SND_OFF;
-  if(SFX.on){startAmbient();toast("Sound on — stadium ambience synthesized live in your browser.","ok");}
+  if(SFX.on){startAmbient();toast("Sound on.","ok");}
   else stopAmbient();
 };
 
@@ -517,7 +515,7 @@ $("#guestBtn").onclick=async()=>{
     b.textContent="Exit guest";
     $("#walletBtn").textContent="Connect wallet";
     $("#faucetBtn").hidden=false;
-    toast("Guest mode — the server signs real devnet transactions for you. No wallet needed.","ok");
+    toast("Guest mode on — the server signs for you. No wallet needed.","ok");
     refresh();
   }catch(e){
     toast("Guest mode: "+(e.message||"unavailable")+(String(e.message||"").includes("deploy")?" (needs the deployed contract).":""),"err");
@@ -939,10 +937,9 @@ function renderMine(){
 
 /* ---- archive: real recorded matches only ---- */
 function renderArchive(){
-  if(!archive.length)return `<div class="empty"><b style="color:var(--txt)">Verified match archive.</b><br>
-    Finished matches recorded from TxLINE by this node appear here with final scores.
-    Nothing is listed until a match has actually been recorded — this archive can't be faked, that's the point.</div>`;
-  return `<div class="hint"><b>Verified archive.</b> Final scores as recorded live from the TxLINE feed by this node.</div>`+
+  if(!archive.length)return `<div class="empty"><b style="color:var(--txt)">Match archive.</b><br>
+    Final scores appear here as matches are recorded live from the TxLINE feed.</div>`;
+  return `<div class="hint"><b>Final scores</b>, recorded live from the TxLINE feed.</div>`+
     archive.map(r=>{const fx=r.fixture||{};
     return `<div class="arch">
       <div><div style="font-weight:700">${inlineFlag(fx.name1,fx.code1)}${esc(fx.name1?teamName(fx.name1).label:"Fixture")} vs ${esc(fx.name2?teamName(fx.name2).label:("#"+r.fixtureId))} ${inlineFlag(fx.name2,fx.code2)}</div>
@@ -963,10 +960,10 @@ function openSheet(marketId,sideYes){
   const p=m.pools||{yesPool:0,noPool:0};
   const demo=health?.contract&&String(health.contract).includes("demo");
   $("#sheet").innerHTML=`<h3>Stake ${sideYes?"YES":"NO"} — ${esc(m.question)}</h3>
-    ${demo?`<div class="hint" style="margin-top:12px"><b>Demo mode:</b> the contract isn't deployed yet, so no wallet approval window will appear — staking activates the moment the deploy completes.</div>`:""}
+    ${demo?`<div class="hint" style="margin-top:12px"><b>Demo mode:</b> staking activates once the contract is deployed.</div>`:""}
     <input class="amt" id="amt" type="number" min="0.1" step="0.1" placeholder="USDC amount" inputmode="decimal">
     <div class="preview" id="prev">Enter an amount to preview your payout.</div>
-    <div class="note">Pools shift until kickoff; payout is an estimate. 1% fee on winnings only. Settlement is proof-verified on Solana at full time.</div>
+    <div class="note">Pools shift until kickoff — payout is an estimate. 1% fee on winnings. Settled by proof at full time.</div>
     <div class="sides" style="margin-top:14px">
       <button class="btn btn-g side" id="cancelBtn">Cancel</button>
       <button class="btn btn-v side" id="confirmBtn">Stake ${sideYes?"YES":"NO"}</button>
